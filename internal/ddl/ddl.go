@@ -2,23 +2,9 @@ package ddl
 
 import (
 	"fmt"
-	"path"
 
 	"google.golang.org/protobuf/compiler/protogen"
 )
-
-func removeExt(filename, ext string) string {
-	if path.Ext(filename) == ext {
-		return filename[:len(filename)-len(ext)]
-	}
-	return filename
-}
-
-func generatingFilePath(sourceFilePath string) string {
-	generatingFilePath := removeExt(sourceFilePath, ".proto")
-	generatingFilePath += "_ddl.pb.sql"
-	return generatingFilePath
-}
 
 func GenerateDDLFiles(version string, gen *protogen.Plugin) error {
 	extensionTypes, err := loadAllExtensionTypes(*gen)
@@ -31,7 +17,8 @@ func GenerateDDLFiles(version string, gen *protogen.Plugin) error {
 			continue
 		}
 
-		generatedSQLFile := gen.NewGeneratedFile(generatingFilePath(sourceFile.Desc.Path()), protogen.GoImportPath(sourceFile.GoPackageName))
+		sqlFileSuffix := "_ddl.pb.sql"
+		generatedSQLFile := gen.NewGeneratedFile(sourceFile.GeneratedFilenamePrefix+sqlFileSuffix, sourceFile.GoImportPath)
 
 		addFileHead(version, generatedSQLFile, gen, sourceFile)
 
