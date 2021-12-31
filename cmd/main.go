@@ -9,7 +9,7 @@ import (
 	"google.golang.org/protobuf/types/pluginpb"
 )
 
-const version = "0.0.1"
+const version = "0.0.1-alpha"
 
 func main() {
 	showVersion := flag.Bool("version", false, "print the version and exit")
@@ -26,6 +26,6 @@ func main() {
 	}.Run(func(gen *protogen.Plugin) error {
 		gen.SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL)
 
-		return ddl.GenerateDDLFiles(gen)
+		return ddl.GenerateDDLFiles(version, gen)
 	})
 }
