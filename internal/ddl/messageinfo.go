@@ -144,7 +144,7 @@ var (
 	ErrNotSupportedDatastore = fmt.Errorf("not supported datastore")
 )
 
-func (mi *MessageInfo) GenerateDDLToCreate() (string, error) {
+func (mi *MessageInfo) GenerateDDLSQL() (string, error) {
 	tableName := strcase.ToSnake(string(mi.message.Desc.Name()))
 
 	if !mi.supportsMySQL() {
