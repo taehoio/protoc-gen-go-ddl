@@ -39,6 +39,9 @@ func GenerateDDLFiles(gen *protogen.Plugin) error {
 			}
 
 			stmts, err := mi.GenerateDDLToCreate()
+			if err == ErrNotSupportedDatastore {
+				continue
+			}
 			if err != nil {
 				return err
 			}

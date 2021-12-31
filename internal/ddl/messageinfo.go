@@ -8,7 +8,6 @@ import (
 	protobufv1 "github.com/taehoio/ddl/gen/go/ddl/protobuf/v1"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/descriptorpb"
 )
@@ -68,36 +67,15 @@ func NewMessageInfo(message protogen.Message, extensionTypes protoregistry.Types
 }
 
 func (mi *MessageInfo) listMessageOptions() ([]MessageOption, error) {
-	// The MessageOptions as provided by protoc does not know about
-	// dynamically created extensions, so they are left as unknown fields.
-	// We round-trip marshal and unmarshal the opts with
-	// a dynamically created resolver that does know about extensions at runtime.
-	opts := mi.message.Desc.Options().(*descriptorpb.MessageOptions)
-	b, err := proto.Marshal(opts)
-	if err != nil {
-		return nil, err
-	}
-	opts.Reset()
-	err = proto.UnmarshalOptions{Resolver: &mi.extensionTypes}.Unmarshal(b, opts)
-	if err != nil {
-		return nil, err
-	}
-
 	var messageOptions []MessageOption
 
-	// Use protobuf reflection to iterate over all the extension fields,
-	// looking for the ones that we are interested in.
-	opts.ProtoReflect().Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
-		if !fd.IsExtension() {
-			return true
-		}
+	opts := mi.message.Desc.Options().(*descriptorpb.MessageOptions)
 
-		messageOptions = append(messageOptions, MessageOption{
-			Name:  string(fd.Name()),
-			Value: v.String(),
-		})
+	datastoreTypeOptVal := proto.GetExtension(opts, protobufv1.E_DatastoreType).(protobufv1.DatastoreType)
 
-		return true
+	messageOptions = append(messageOptions, MessageOption{
+		Name:  protobufv1.E_DatastoreType.Name,
+		Value: datastoreTypeOptVal.String(),
 	})
 
 	return messageOptions, nil
@@ -162,8 +140,16 @@ func (mi *MessageInfo) extractIndices() ([]Index, error) {
 	return indices, nil
 }
 
+var (
+	ErrNotSupportedDatastore = fmt.Errorf("not supported datastore")
+)
+
 func (mi *MessageInfo) GenerateDDLToCreate() (string, error) {
 	tableName := strcase.ToSnake(string(mi.message.Desc.Name()))
+
+	if !mi.supportsMySQL() {
+		return "", ErrNotSupportedDatastore
+	}
 
 	var ddlFields []string
 	for _, field := range mi.Fields {
@@ -180,4 +166,13 @@ func (mi *MessageInfo) GenerateDDLToCreate() (string, error) {
 	}
 
 	return strings.Join(stmts, "\n\n"), nil
+}
+
+func (mi *MessageInfo) supportsMySQL() bool {
+	for _, opt := range mi.MessageOptions {
+		if opt.Name == protobufv1.E_DatastoreType.Name && opt.Value == protobufv1.DatastoreType_DATASTORE_TYPE_MYSQL.String() {
+			return true
+		}
+	}
+	return false
 }
