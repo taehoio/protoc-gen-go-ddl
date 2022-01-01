@@ -7,11 +7,6 @@ import (
 )
 
 func GenerateDDLFiles(version string, gen *protogen.Plugin) error {
-	extensionTypes, err := loadAllExtensionTypes(*gen)
-	if err != nil {
-		return err
-	}
-
 	for _, sourceFile := range gen.Files {
 		if !sourceFile.Generate {
 			continue
@@ -23,7 +18,7 @@ func GenerateDDLFiles(version string, gen *protogen.Plugin) error {
 		addFileHead(version, generatedSQLFile, gen, sourceFile)
 
 		for _, message := range sourceFile.Messages {
-			mi, err := NewMessageInfo(*message, extensionTypes)
+			mi, err := NewMessageInfo(*message)
 			if err != nil {
 				return err
 			}

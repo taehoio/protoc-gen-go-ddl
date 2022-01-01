@@ -44,7 +44,7 @@ func NewField(field protogen.Field) (*Field, error) {
 
 const defaultVarcharLength = 255
 
-func (f *Field) kindToSQLType() (string, error) {
+func (f Field) kindToSQLType() (string, error) {
 	kind := f.field.Desc.Kind()
 
 	switch kind {
@@ -90,7 +90,7 @@ func (f *Field) kindToSQLType() (string, error) {
 	}
 }
 
-func (f *Field) listFieldOptions() []FieldOption {
+func (f Field) listFieldOptions() []FieldOption {
 	var fieldOptions []FieldOption
 
 	opts := f.field.Desc.Options().(*descriptorpb.FieldOptions)
@@ -113,6 +113,6 @@ func (f *Field) listFieldOptions() []FieldOption {
 	return fieldOptions
 }
 
-func (f *Field) ToSQL() string {
+func (f Field) ToSQL() string {
 	return fmt.Sprintf("%s %s", f.Name, f.Type)
 }
