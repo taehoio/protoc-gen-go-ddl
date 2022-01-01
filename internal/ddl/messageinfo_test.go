@@ -54,9 +54,9 @@ func TestExtractIndices(t *testing.T) {
 func TestGenerateDDLSQL(t *testing.T) {
 	expected := `CREATE TABLE user (
 	id BIGINT UNSIGNED,
-	created_at TIMESTAMP NULL DEFAULT NULL,
-	updated_at TIMESTAMP NULL DEFAULT NULL,
-	deleted_at TIMESTAMP NULL DEFAULT NULL,
+	created_at TIMESTAMP(6) NULL DEFAULT NULL,
+	updated_at TIMESTAMP(6) NULL DEFAULT NULL,
+	deleted_at TIMESTAMP(6) NULL DEFAULT NULL,
 	password_hash VARCHAR(255),
 	full_name VARCHAR(255),
 	email VARCHAR(255),
