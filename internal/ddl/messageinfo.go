@@ -113,7 +113,7 @@ func (mi MessageInfo) extractIndices() ([]Index, error) {
 
 	for _, field := range mi.Fields {
 		for _, opt := range field.Options {
-			if opt.Name == protobufv1.E_Index.Name {
+			if opt.Name == string(protobufv1.E_Index.TypeDescriptor().FullName()) {
 				kvPairs := strings.Split(opt.Value, ",")
 				for _, kvPair := range kvPairs {
 					kv := strings.Split(kvPair, "=")

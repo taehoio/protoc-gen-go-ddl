@@ -16,7 +16,7 @@ run:
 .PHONY: format
 ## format: format files
 format:
-	@go get -d golang.org/x/tools/cmd/goimports
+	@go install golang.org/x/tools/cmd/goimports@latest
 	goimports -local github.com/taehoio -w .
 	gofmt -s -w .
 	go mod tidy
@@ -24,19 +24,19 @@ format:
 .PHONY: test
 ## test: run tests
 test:
-	@go get -d github.com/rakyll/gotest
+	@go install github.com/rakyll/gotest@latest
 	gotest -p 1 -race -cover -v ./...
 
 .PHONY: coverage
 ## coverage: run tests with coverage
 coverage:
-	@go get -d github.com/rakyll/gotest
+	@go install github.com/rakyll/gotest@latest
 	gotest -p 1 -race -coverprofile=coverage.out -covermode=atomic -v ./...
 
 .PHONY: lint
 ## lint: check everything's okay
 lint:
-	@go get -d github.com/kyoh86/scopelint
+	@go install github.com/kyoh86/scopelint@latest
 	golangci-lint run ./...
 	scopelint --set-exit-status ./...
 	go mod verify
@@ -44,9 +44,8 @@ lint:
 .PHONY: generate
 ## generate: generate source code for mocking
 generate:
-	@go get golang.org/x/tools/cmd/stringer
-	@go get github.com/golang/mock/gomock
-	@go install github.com/golang/mock/mockgen
+	@go install golang.org/x/tools/cmd/stringer@latest
+	@go install github.com/golang/mock/mockgen@v1.6.0
 	go generate ./...
 
 .PHONY: help
