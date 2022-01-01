@@ -8,13 +8,11 @@ import (
 	protobufv1 "github.com/taehoio/ddl/gen/go/ddl/protobuf/v1"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/descriptorpb"
 )
 
 type MessageInfo struct {
-	message        protogen.Message
-	extensionTypes protoregistry.Types
+	message protogen.Message
 
 	MessageOptions []MessageOption
 	Fields         []Field
@@ -33,10 +31,9 @@ type Index struct {
 	FieldNames []string
 }
 
-func NewMessageInfo(message protogen.Message, extensionTypes protoregistry.Types) (*MessageInfo, error) {
+func NewMessageInfo(message protogen.Message) (*MessageInfo, error) {
 	t := &MessageInfo{
-		message:        message,
-		extensionTypes: extensionTypes,
+		message: message,
 	}
 
 	messageOptions, err := t.listMessageOptions()
@@ -66,7 +63,7 @@ func NewMessageInfo(message protogen.Message, extensionTypes protoregistry.Types
 	return t, nil
 }
 
-func (mi *MessageInfo) listMessageOptions() ([]MessageOption, error) {
+func (mi MessageInfo) listMessageOptions() ([]MessageOption, error) {
 	var messageOptions []MessageOption
 
 	opts := mi.message.Desc.Options().(*descriptorpb.MessageOptions)
@@ -81,7 +78,7 @@ func (mi *MessageInfo) listMessageOptions() ([]MessageOption, error) {
 	return messageOptions, nil
 }
 
-func (mi *MessageInfo) extractFields() ([]Field, error) {
+func (mi MessageInfo) extractFields() ([]Field, error) {
 	var fields []Field
 
 	for _, field := range mi.message.Fields {
@@ -96,7 +93,7 @@ func (mi *MessageInfo) extractFields() ([]Field, error) {
 	return fields, nil
 }
 
-func (mi *MessageInfo) extractKeys() ([]string, error) {
+func (mi MessageInfo) extractKeys() ([]string, error) {
 	var keys []string
 
 	for _, field := range mi.Fields {
@@ -110,7 +107,7 @@ func (mi *MessageInfo) extractKeys() ([]string, error) {
 	return keys, nil
 }
 
-func (mi *MessageInfo) extractIndices() ([]Index, error) {
+func (mi MessageInfo) extractIndices() ([]Index, error) {
 	indexMap := make(map[string][]string)
 
 	for _, field := range mi.Fields {
@@ -144,7 +141,7 @@ var (
 	ErrNotSupportedDatastore = fmt.Errorf("not supported datastore")
 )
 
-func (mi *MessageInfo) GenerateDDLSQL() (string, error) {
+func (mi MessageInfo) GenerateDDLSQL() (string, error) {
 	tableName := strcase.ToSnake(string(mi.message.Desc.Name()))
 
 	if !mi.supportsMySQL() {
@@ -168,7 +165,7 @@ func (mi *MessageInfo) GenerateDDLSQL() (string, error) {
 	return strings.Join(stmts, "\n\n"), nil
 }
 
-func (mi *MessageInfo) supportsMySQL() bool {
+func (mi MessageInfo) supportsMySQL() bool {
 	for _, opt := range mi.MessageOptions {
 		if opt.Name == protobufv1.E_DatastoreType.Name && opt.Value == protobufv1.DatastoreType_DATASTORE_TYPE_MYSQL.String() {
 			return true
