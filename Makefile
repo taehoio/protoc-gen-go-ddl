@@ -31,7 +31,7 @@ test:
 ## coverage: run tests with coverage
 coverage:
 	@go get -d github.com/rakyll/gotest
-	gotest -p 1 -race -coverprofile=coverage.txt -covermode=atomic -v ./...
+	gotest -p 1 -race -coverprofile=coverage.out -covermode=atomic -v ./...
 
 .PHONY: lint
 ## lint: check everything's okay
