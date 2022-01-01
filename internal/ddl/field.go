@@ -57,26 +57,12 @@ func (f Field) kindToSQLType() (string, error) {
 		return "INT UNSIGNED", nil
 	case protoreflect.Uint64Kind:
 		return "BIGINT UNSIGNED", nil
-	case protoreflect.Sint32Kind:
-		return "INT", nil
-	case protoreflect.Sint64Kind:
-		return "BIGINT", nil
-	case protoreflect.Fixed32Kind:
-		return "INT", nil
-	case protoreflect.Fixed64Kind:
-		return "BIGINT", nil
-	case protoreflect.Sfixed32Kind:
-		return "INT", nil
-	case protoreflect.Sfixed64Kind:
-		return "BIGINT", nil
 	case protoreflect.FloatKind:
 		return "FLOAT", nil
 	case protoreflect.DoubleKind:
 		return "DOUBLE", nil
 	case protoreflect.StringKind:
 		return fmt.Sprintf("VARCHAR(%d)", defaultVarcharLength), nil
-	case protoreflect.BytesKind:
-		return "BYTEA", nil
 	case protoreflect.BoolKind:
 		return "BOOLEAN", nil
 	case protoreflect.EnumKind:
