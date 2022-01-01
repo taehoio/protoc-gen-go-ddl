@@ -57,9 +57,9 @@ func TestKindToSQLType(t *testing.T) {
 
 	tests := []test{
 		{protoreflect.Uint64Kind, "BIGINT UNSIGNED"},
-		{protoreflect.MessageKind, "TIMESTAMP NULL DEFAULT NULL"},
-		{protoreflect.MessageKind, "TIMESTAMP NULL DEFAULT NULL"},
-		{protoreflect.MessageKind, "TIMESTAMP NULL DEFAULT NULL"},
+		{protoreflect.MessageKind, "TIMESTAMP(6) NULL DEFAULT NULL"},
+		{protoreflect.MessageKind, "TIMESTAMP(6) NULL DEFAULT NULL"},
+		{protoreflect.MessageKind, "TIMESTAMP(6) NULL DEFAULT NULL"},
 		{protoreflect.StringKind, "VARCHAR(255)"},
 		{protoreflect.StringKind, "VARCHAR(255)"},
 		{protoreflect.StringKind, "VARCHAR(255)"},

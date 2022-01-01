@@ -83,7 +83,7 @@ func (f Field) kindToSQLType() (string, error) {
 		return "INT", nil
 	case protoreflect.MessageKind:
 		if f.field.Desc.Message().FullName() == "google.protobuf.Timestamp" {
-			return "TIMESTAMP NULL DEFAULT NULL", nil
+			return "TIMESTAMP(6) NULL DEFAULT NULL", nil
 		}
 		return "JSONB", nil
 	default:
