@@ -5,10 +5,11 @@ import (
 	"strings"
 
 	"github.com/iancoleman/strcase"
-	protobufv1 "github.com/taehoio/ddl/gen/go/ddl/protobuf/v1"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
+
+	protobufv1 "github.com/taehoio/ddl/gen/go/ddl/protobuf/v1"
 )
 
 type MessageInfo struct {
@@ -71,7 +72,7 @@ func (mi MessageInfo) listMessageOptions() ([]MessageOption, error) {
 	datastoreTypeOptVal := proto.GetExtension(opts, protobufv1.E_DatastoreType).(protobufv1.DatastoreType)
 
 	messageOptions = append(messageOptions, MessageOption{
-		Name:  protobufv1.E_DatastoreType.Name,
+		Name:  string(protobufv1.E_DatastoreType.TypeDescriptor().FullName()),
 		Value: datastoreTypeOptVal.String(),
 	})
 
@@ -98,7 +99,7 @@ func (mi MessageInfo) extractKeys() ([]string, error) {
 
 	for _, field := range mi.Fields {
 		for _, opt := range field.Options {
-			if opt.Name == protobufv1.E_Key.Name && opt.Value == "true" {
+			if opt.Name == string(protobufv1.E_Key.TypeDescriptor().FullName()) && opt.Value == "true" {
 				keys = append(keys, field.Name)
 			}
 		}
@@ -167,7 +168,7 @@ func (mi MessageInfo) GenerateDDLSQL() (string, error) {
 
 func (mi MessageInfo) supportsMySQL() bool {
 	for _, opt := range mi.MessageOptions {
-		if opt.Name == protobufv1.E_DatastoreType.Name && opt.Value == protobufv1.DatastoreType_DATASTORE_TYPE_MYSQL.String() {
+		if opt.Name == string(protobufv1.E_DatastoreType.TypeDescriptor().FullName()) && opt.Value == protobufv1.DatastoreType_DATASTORE_TYPE_MYSQL.String() {
 			return true
 		}
 	}
