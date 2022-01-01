@@ -13,7 +13,7 @@ import (
 
 func gen() (*protogen.Plugin, error) {
 	// https://medium.com/@tim.r.coulson/writing-a-protoc-plugin-with-google-golang-org-protobuf-cd5aa75f5777
-	b, err := ioutil.ReadFile("../../testdata/protoc_stdin.out")
+	b, err := ioutil.ReadFile("../../testdata/protoc_stdin.dat")
 	if err != nil {
 		return nil, err
 	}

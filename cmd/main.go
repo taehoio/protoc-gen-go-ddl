@@ -4,9 +4,10 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/taehoio/protoc-gen-go-ddl/internal/ddl"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/types/pluginpb"
+
+	"github.com/taehoio/protoc-gen-go-ddl/internal/ddl"
 )
 
 const version = "0.0.1-alpha"

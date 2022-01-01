@@ -3,11 +3,12 @@ package ddl
 import (
 	"fmt"
 
-	protobufv1 "github.com/taehoio/ddl/gen/go/ddl/protobuf/v1"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
+
+	protobufv1 "github.com/taehoio/ddl/gen/go/ddl/protobuf/v1"
 )
 
 type Field struct {
@@ -98,14 +99,14 @@ func (f Field) listFieldOptions() []FieldOption {
 	keyOptVal := proto.GetExtension(opts, protobufv1.E_Key).(bool)
 
 	fieldOptions = append(fieldOptions, FieldOption{
-		Name:  protobufv1.E_Key.Name,
+		Name:  string(protobufv1.E_Key.TypeDescriptor().FullName()),
 		Value: fmt.Sprintf("%v", keyOptVal),
 	})
 
 	indexOptVal := proto.GetExtension(opts, protobufv1.E_Index).([]string)
 	for _, v := range indexOptVal {
 		fieldOptions = append(fieldOptions, FieldOption{
-			Name:  protobufv1.E_Index.Name,
+			Name:  string(protobufv1.E_Index.TypeDescriptor().FullName()),
 			Value: v,
 		})
 	}
