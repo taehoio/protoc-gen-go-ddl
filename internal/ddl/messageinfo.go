@@ -154,13 +154,23 @@ func (mi MessageInfo) GenerateDDLSQL() (string, error) {
 		ddlFields = append(ddlFields, field.ToSQL())
 	}
 
-	ddlCreateTable := fmt.Sprintf("CREATE TABLE %s (\n\t%v,\n\tPRIMARY KEY (%s)\n);", tableName, strings.Join(ddlFields, ",\n\t"), strings.Join(mi.Keys, ", "))
+	var keys []string
+	for _, k := range mi.Keys {
+		keys = append(keys, fmt.Sprintf("`%s`", k))
+	}
+
+	ddlCreateTable := fmt.Sprintf("CREATE TABLE `%s` (\n\t%v,\n\tPRIMARY KEY (%s)\n);", tableName, strings.Join(ddlFields, ",\n\t"), strings.Join(keys, ", "))
 
 	var stmts []string
 	stmts = append(stmts, ddlCreateTable)
 
 	for _, index := range mi.Indices {
-		stmts = append(stmts, fmt.Sprintf("CREATE INDEX %s ON %s (%s);", index.Name, tableName, strings.Join(index.FieldNames, ", ")))
+		var indexFieldNames []string
+		for _, ifn := range index.FieldNames {
+			indexFieldNames = append(indexFieldNames, fmt.Sprintf("`%s`", ifn))
+		}
+
+		stmts = append(stmts, fmt.Sprintf("CREATE INDEX %s ON %s (%s);", index.Name, tableName, strings.Join(indexFieldNames, ", ")))
 	}
 
 	return strings.Join(stmts, "\n\n"), nil

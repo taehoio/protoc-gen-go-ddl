@@ -68,12 +68,41 @@ func (f Field) kindToSQLType() (string, error) {
 	case protoreflect.EnumKind:
 		return "INT", nil
 	case protoreflect.MessageKind:
-		if f.field.Desc.Message().FullName() == "google.protobuf.Timestamp" {
-			return "TIMESTAMP(6) NULL DEFAULT NULL", nil
-		}
-		return "JSONB", nil
+		return f.messageKindToSQLType()
 	default:
 		return "", fmt.Errorf("unsupported kind %s", kind)
+	}
+}
+
+func (f Field) messageKindToSQLType() (string, error) {
+	if f.field.Desc.Kind() != protoreflect.MessageKind {
+		return "", fmt.Errorf("not message kind but it is %s", f.field.Desc.Kind())
+	}
+
+	name := f.field.Desc.Message().FullName()
+	switch name {
+	case "google.protobuf.Timestamp":
+		return "TIMESTAMP(6) NULL DEFAULT NULL", nil
+	case "google.protobuf.StringValue":
+		return fmt.Sprintf("VARCHAR(%d)", defaultVarcharLength), nil
+	case "google.protobuf.Int32Value":
+		return "INT", nil
+	case "google.protobuf.Int64Value":
+		return "BIGINT", nil
+	case "google.protobuf.UInt32Value":
+		return "INT UNSIGNED", nil
+	case "google.protobuf.UInt64Value":
+		return "BIGINT UNSIGNED", nil
+	case "google.protobuf.FloatValue":
+		return "FLOAT", nil
+	case "google.protobuf.DoubleValue":
+		return "DOUBLE", nil
+	case "google.protobuf.BoolValue":
+		return "BOOLEAN", nil
+	case "google.protobuf.BytesValue":
+		return "BLOB", nil
+	default:
+		return "JSONB", nil
 	}
 }
 
@@ -101,5 +130,5 @@ func (f Field) listFieldOptions() []FieldOption {
 }
 
 func (f Field) ToSQL() string {
-	return fmt.Sprintf("%s %s", f.Name, f.Type)
+	return fmt.Sprintf("`%s` %s", f.Name, f.Type)
 }
