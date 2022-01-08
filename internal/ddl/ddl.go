@@ -48,7 +48,6 @@ func addFileHead(version string, g *protogen.GeneratedFile, gen *protogen.Plugin
 	} else {
 		g.P("-- source: ", sourceFile.Desc.Path())
 	}
-	g.P()
 }
 
 func protocVersion(gen *protogen.Plugin) string {

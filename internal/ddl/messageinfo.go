@@ -159,7 +159,7 @@ func (mi MessageInfo) GenerateDDLSQL() (string, error) {
 		keys = append(keys, fmt.Sprintf("`%s`", k))
 	}
 
-	ddlCreateTable := fmt.Sprintf("CREATE TABLE `%s` (\n\t%v,\n\tPRIMARY KEY (%s)\n);", tableName, strings.Join(ddlFields, ",\n\t"), strings.Join(keys, ", "))
+	ddlCreateTable := fmt.Sprintf("\nCREATE TABLE `%s` (\n\t%v,\n\tPRIMARY KEY (%s)\n);", tableName, strings.Join(ddlFields, ",\n\t"), strings.Join(keys, ", "))
 
 	var stmts []string
 	stmts = append(stmts, ddlCreateTable)
@@ -170,10 +170,10 @@ func (mi MessageInfo) GenerateDDLSQL() (string, error) {
 			indexFieldNames = append(indexFieldNames, fmt.Sprintf("`%s`", ifn))
 		}
 
-		stmts = append(stmts, fmt.Sprintf("CREATE INDEX %s ON %s (%s);", index.Name, tableName, strings.Join(indexFieldNames, ", ")))
+		stmts = append(stmts, fmt.Sprintf("\nCREATE INDEX `%s` ON `%s` (%s);", index.Name, tableName, strings.Join(indexFieldNames, ", ")))
 	}
 
-	return strings.Join(stmts, "\n\n"), nil
+	return strings.Join(stmts, "\n"), nil
 }
 
 func (mi MessageInfo) supportsMySQL() bool {
