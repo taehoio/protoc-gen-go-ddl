@@ -84,13 +84,13 @@ func TestListFieldOptions(t *testing.T) {
 	assert.NoError(t, err)
 	idOpts := idField.listFieldOptions()
 	assert.Len(t, idOpts, 1)
-	assert.Equal(t, FieldOption{Name: "ddl.protobuf.v1.key", Value: "true"}, idOpts[0])
+	assert.Equal(t, FieldOption{Name: "taehoio.ddl.protobuf.v1.key", Value: "true"}, idOpts[0])
 
 	emailField, err := NewField(*u.Fields[6])
 	assert.NoError(t, err)
 	emailOpts := emailField.listFieldOptions()
 	assert.Len(t, emailOpts, 2)
-	assert.Equal(t, FieldOption{Name: "ddl.protobuf.v1.index", Value: "name=idx_email"}, emailOpts[1])
+	assert.Equal(t, FieldOption{Name: "taehoio.ddl.protobuf.v1.index", Value: "name=idx_email"}, emailOpts[1])
 }
 
 func TestToSQL(t *testing.T) {

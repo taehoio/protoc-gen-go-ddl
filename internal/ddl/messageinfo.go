@@ -9,7 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	protobufv1 "github.com/taehoio/ddl/gen/go/ddl/protobuf/v1"
+	protobufv1 "github.com/taehoio/ddl/gen/go/taehoio/ddl/protobuf/v1"
 )
 
 type MessageInfo struct {
@@ -20,6 +20,7 @@ type MessageInfo struct {
 
 	Keys    []string
 	Indices []Index
+	Uniques []Unique
 }
 
 type MessageOption struct {
@@ -28,6 +29,11 @@ type MessageOption struct {
 }
 
 type Index struct {
+	Name       string
+	FieldNames []string
+}
+
+type Unique struct {
 	Name       string
 	FieldNames []string
 }
@@ -60,6 +66,12 @@ func NewMessageInfo(message protogen.Message) (*MessageInfo, error) {
 		return nil, err
 	}
 	t.Indices = indices
+
+	uniques, err := t.extractUniques()
+	if err != nil {
+		return nil, err
+	}
+	t.Uniques = uniques
 
 	return t, nil
 }
@@ -138,6 +150,36 @@ func (mi MessageInfo) extractIndices() ([]Index, error) {
 	return indices, nil
 }
 
+func (mi MessageInfo) extractUniques() ([]Unique, error) {
+	uniqueMap := make(map[string][]string)
+
+	for _, field := range mi.Fields {
+		for _, opt := range field.Options {
+			if opt.Name == string(protobufv1.E_Unique.TypeDescriptor().FullName()) {
+				kvPairs := strings.Split(opt.Value, ",")
+				for _, kvPair := range kvPairs {
+					kv := strings.Split(kvPair, "=")
+					k := kv[0]
+					uniqueName := kv[1]
+					if k == "name" {
+						uniqueMap[uniqueName] = append(uniqueMap[uniqueName], field.Name)
+					}
+				}
+			}
+		}
+	}
+
+	var uniques []Unique
+	for k, v := range uniqueMap {
+		uniques = append(uniques, Unique{
+			Name:       k,
+			FieldNames: v,
+		})
+	}
+
+	return uniques, nil
+}
+
 var (
 	ErrNotSupportedDatastore = fmt.Errorf("not supported datastore")
 )
@@ -171,6 +213,16 @@ func (mi MessageInfo) GenerateDDLSQL() (string, error) {
 		}
 
 		stmts = append(stmts, fmt.Sprintf("\nCREATE INDEX `%s` ON `%s` (%s);", index.Name, tableName, strings.Join(indexFieldNames, ", ")))
+	}
+
+	for _, unique := range mi.Uniques {
+		var uniqueFieldNames []string
+		for _, ufn := range unique.FieldNames {
+			uniqueFieldNames = append(uniqueFieldNames, fmt.Sprintf("`%s`", ufn))
+		}
+
+		stmts = append(stmts, fmt.Sprintf("\nCREATE UNIQUE INDEX `%s` ON `%s` (%s);", unique.Name, tableName, strings.Join(uniqueFieldNames, ", ")))
+
 	}
 
 	return strings.Join(stmts, "\n"), nil
