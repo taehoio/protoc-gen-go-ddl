@@ -22,7 +22,7 @@ func TestListMessageOptions(t *testing.T) {
 	opts, err := u.listMessageOptions()
 	assert.NoError(t, err)
 	assert.Len(t, opts, 1)
-	assert.Equal(t, MessageOption{Name: "ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"}, opts[0])
+	assert.Equal(t, MessageOption{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"}, opts[0])
 }
 
 func TestExtractFields(t *testing.T) {
@@ -54,7 +54,7 @@ func TestExtractIndices(t *testing.T) {
 
 func TestGenerateDDLSQL(t *testing.T) {
 	expectedLines := []string{
-		"CREATE TABLE `user` (",
+		"\nCREATE TABLE `user` (",
 		"	`id` BIGINT UNSIGNED,",
 		"	`created_at` TIMESTAMP(6) NULL DEFAULT NULL,",
 		"	`updated_at` TIMESTAMP(6) NULL DEFAULT NULL,",
@@ -65,7 +65,7 @@ func TestGenerateDDLSQL(t *testing.T) {
 		"	PRIMARY KEY (`id`)",
 		");",
 		"",
-		"CREATE INDEX idx_email ON user (`email`);",
+		"CREATE INDEX `idx_email` ON `user` (`email`);",
 	}
 	expected := strings.Join(expectedLines, "\n")
 
@@ -80,7 +80,7 @@ func TestGenerateDDLSQL(t *testing.T) {
 func TestGenerateDDLSQL_FailsWithSQLLite(t *testing.T) {
 	u, err := ddlUserMessage()
 	assert.NoError(t, err)
-	u.MessageOptions = []MessageOption{{Name: "ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_SQLITE"}}
+	u.MessageOptions = []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_SQLITE"}}
 
 	s, err := u.GenerateDDLSQL()
 	assert.Error(t, ErrNotSupportedDatastore, err)

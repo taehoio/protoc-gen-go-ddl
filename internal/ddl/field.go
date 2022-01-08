@@ -8,7 +8,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	protobufv1 "github.com/taehoio/ddl/gen/go/ddl/protobuf/v1"
+	protobufv1 "github.com/taehoio/ddl/gen/go/taehoio/ddl/protobuf/v1"
 )
 
 type Field struct {
@@ -122,6 +122,14 @@ func (f Field) listFieldOptions() []FieldOption {
 	for _, v := range indexOptVal {
 		fieldOptions = append(fieldOptions, FieldOption{
 			Name:  string(protobufv1.E_Index.TypeDescriptor().FullName()),
+			Value: v,
+		})
+	}
+
+	uniqueOptVal := proto.GetExtension(opts, protobufv1.E_Unique).([]string)
+	for _, v := range uniqueOptVal {
+		fieldOptions = append(fieldOptions, FieldOption{
+			Name:  string(protobufv1.E_Unique.TypeDescriptor().FullName()),
 			Value: v,
 		})
 	}
