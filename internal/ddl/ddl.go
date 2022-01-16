@@ -2,8 +2,8 @@ package ddl
 
 import (
 	"fmt"
-	"strings"
 
+	"github.com/iancoleman/strcase"
 	"google.golang.org/protobuf/compiler/protogen"
 )
 
@@ -33,7 +33,7 @@ func GenerateDDLFiles(version string, gen *protogen.Plugin) error {
 			}
 			generatedSQLFile.P(stmts)
 
-			dmlFileSuffix := fmt.Sprintf("_dml_%s.pb.go", strings.ToLower(string(message.Desc.Name())))
+			dmlFileSuffix := fmt.Sprintf("_dml_%s.pb.go", strcase.ToSnake(string(message.Desc.Name())))
 			gereratedDMLFile := gen.NewGeneratedFile(sourceFile.GeneratedFilenamePrefix+dmlFileSuffix, sourceFile.GoImportPath)
 
 			d, err := mi.GenerateDMLSQL()

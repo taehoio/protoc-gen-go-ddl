@@ -257,7 +257,7 @@ type dmlPackage struct {
 
 type dmlMessage struct {
 	Name      string
-	VarName string
+	VarName   string
 	TableName string
 	Fields    []dmlField
 	KeyFields []dmlField
@@ -361,7 +361,7 @@ func (mi MessageInfo) GenerateDMLSQL() (string, error) {
 		},
 		Msg: dmlMessage{
 			Name:      strcase.ToCamel(string(mi.message.Desc.Name())),
-			VarName:      strcase.ToLowerCamel(string(mi.message.Desc.Name())),
+			VarName:   strcase.ToLowerCamel(string(mi.message.Desc.Name())),
 			TableName: strcase.ToSnake((string(mi.message.Desc.Name()))),
 			Fields:    dmlFields,
 			KeyFields: keyFields,

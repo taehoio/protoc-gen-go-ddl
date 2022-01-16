@@ -14,16 +14,25 @@ import (
 const (
 	{{.Msg.VarName}}InsertStmt = `
 		INSERT INTO {{.Msg.TableName}} (
-			{{range $index, $field := .Msg.Fields}}{{if $index}}, {{end}}{{$field.SQLName}}{{end}}
+			{{range $index, $field := .Msg.Fields}}
+				{{- if $index}}, {{end}}{{$field.SQLName}}
+			{{- end}}
 		) VALUES (
-			{{range $index, $field := .Msg.Fields}}{{if $index}}, {{end}}?{{end}}
+			{{range $index, $field := .Msg.Fields}}
+				{{- if $index}}, {{end}}?
+			{{- end}}
 		)
 	`
 
 	{{.Msg.VarName}}UpdateStmt = `
 		UPDATE {{.Msg.TableName}} SET
-			{{range $index, $field := .Msg.Fields}}{{if $index}}, {{end}}{{$field.SQLName}} = ?{{end}}
-		WHERE {{range $index, $field := .Msg.KeyFields}}{{if $index}} AND {{end}}{{$field.SQLName}} = ?{{end}}
+			{{range $index, $field := .Msg.Fields}}
+				{{- if $index}}, {{end}}{{$field.SQLName}} = ?
+			{{- end}}
+		WHERE
+			{{range $index, $field := .Msg.KeyFields}}
+				{{- if $index}} AND {{end}}{{$field.SQLName}} = ?
+			{{- end}}
 	`
 )
 
@@ -35,12 +44,12 @@ var (
 type {{.Msg.Name}}Recorder interface {
 	Get(db *sql.DB, id uint64) (*{{.Msg.Name}}, error)
 	Save(db *sql.DB) error
-	{{range .Msg.Indices}}
-	FindOneBy{{.Name}}(
-		db *sql.DB,
-		{{range $index, $field := .FieldNames}}
-			{{$field}} interface{},
-		{{end}}) (*{{$.Msg.Name}}, error)
+	{{range .Msg.Indices -}}
+	FindOneBy{{.Name}}(db *sql.DB,
+		{{- range $index, $field := .FieldNames -}}
+			{{- if $index}}, {{end}}{{$field}} interface{}
+		{{- end -}}
+	) (*{{$.Msg.Name}}, error)
 	{{end}}
 }
 
@@ -54,19 +63,19 @@ func (m *{{.Msg.Name}}) Get(db *sql.DB, id uint64) (*{{.Msg.Name}}, error) {
 	var mm {{.Msg.Name}}
 
 	{{range $index, $field := .Msg.Fields}}
-		{{if $field.ShouldWrapWithSQLType}}
+		{{- if $field.ShouldWrapWithSQLType}}
 			var {{$field.VarName}} {{$field.SQLType}}
-		{{end}}
-	{{end}}
+		{{- end}}
+	{{- end}}
 
 	if err = stmt.QueryRow(id).Scan(
-		{{range $index, $field := .Msg.Fields}}
-			{{if $field.ShouldWrapWithSQLType}}
+		{{- range $index, $field := .Msg.Fields}}
+			{{- if $field.ShouldWrapWithSQLType}}
 				&{{$field.VarName}},
-			{{else}}
+			{{- else}}
 				&mm.{{.Name}}, 
-			{{end}}
-		{{end}}
+			{{- end}}
+		{{- end}}
 	); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -75,27 +84,26 @@ func (m *{{.Msg.Name}}) Get(db *sql.DB, id uint64) (*{{.Msg.Name}}, error) {
 	}
 
 	{{range $index, $field := .Msg.Fields}}
-		{{if $field.ShouldWrapWithSQLType}}
+		{{- if $field.ShouldWrapWithSQLType}}
 			if {{$field.VarName}}.Valid {
-				{{if eq $field.SQLType "sql.NullTime"}}
+				{{- if eq $field.SQLType "sql.NullTime"}}
 					mm.{{$field.Name}} = timestamppb.New({{$field.VarName}}.Time)
-				{{end}}
-				{{if eq $field.SQLType "sql.NullString"}}
+				{{- end}}
+				{{- if eq $field.SQLType "sql.NullString"}}
 					mm.{{$field.Name}} = &wrapperspb.StringValue{Value: {{$field.VarName}}.String}
-				{{end}}
+				{{- end}}
 			}
-		{{end}}
-	{{end}}
+		{{- end}}
+	{{- end}}
 
 	return &mm, nil
 }
 
 {{range .Msg.Indices}}
-func (m *{{$.Msg.Name}}) FindOneBy{{.Name}}(
-	db *sql.DB,
-	{{range $index, $field := .FieldNames}}
-		{{$field}} interface{},
-	{{end}}) (*{{$.Msg.Name}}, error) {
+func (m *{{$.Msg.Name}}) FindOneBy{{.Name}}(db *sql.DB,
+	{{- range $index, $field := .FieldNames}}
+		{{- if $index}}, {{end}}{{$field}} interface{}
+	{{- end}}) (*{{$.Msg.Name}}, error) {
 	stmt, err := db.Prepare("SELECT * FROM {{$.Msg.TableName}} WHERE {{range $index, $field := .FieldNames}}{{if $index}} AND {{end}}{{$field}}=?{{end}}")
 	if err != nil {
 		return nil, err
@@ -105,19 +113,19 @@ func (m *{{$.Msg.Name}}) FindOneBy{{.Name}}(
 	var mm {{$.Msg.Name}}
 
 	{{range $index, $field := $.Msg.Fields}}
-		{{if $field.ShouldWrapWithSQLType}}
+		{{- if $field.ShouldWrapWithSQLType}}
 			var {{$field.VarName}} {{$field.SQLType}}
-		{{end}}
-	{{end}}
+		{{- end}}
+	{{- end}}
 
 	if err = stmt.QueryRow({{range $index, $field := .FieldNames}}{{if $index}}, {{end}}{{$field}}{{end}}).Scan(
-		{{range $index, $field := $.Msg.Fields}}
-			{{if $field.ShouldWrapWithSQLType}}
+		{{- range $index, $field := $.Msg.Fields}}
+			{{- if $field.ShouldWrapWithSQLType}}
 				&{{$field.VarName}},
-			{{else}}
+			{{- else}}
 				&mm.{{.Name}}, 
-			{{end}}
-		{{end}}
+			{{- end}}
+		{{- end}}
 	); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -126,16 +134,16 @@ func (m *{{$.Msg.Name}}) FindOneBy{{.Name}}(
 	}
 
 	{{range $index, $field := $.Msg.Fields}}
-		{{if $field.ShouldWrapWithSQLType}}
+		{{- if $field.ShouldWrapWithSQLType}}
 			if {{$field.VarName}}.Valid {
-				{{if eq $field.SQLType "sql.NullTime"}}
+				{{- if eq $field.SQLType "sql.NullTime"}}
 					mm.{{$field.Name}} = timestamppb.New({{$field.VarName}}.Time)
-				{{end}}
-				{{if eq $field.SQLType "sql.NullString"}}
+				{{- end}}
+				{{- if eq $field.SQLType "sql.NullString"}}
 					mm.{{$field.Name}} = &wrapperspb.StringValue{Value: {{$field.VarName}}.String}
-				{{end}}
+				{{- end}}
 			}
-		{{end}}
+		{{- end}}
 	{{end}}
 
 	return &mm, nil
@@ -187,7 +195,9 @@ func (m *{{.Msg.Name}}) insert(db *sql.DB) error {
 			{{else}}
 				var {{$field.VarName}} {{$field.SQLType}}
 				if m.{{$field.Name}} != nil {
-					{{$field.VarName}}.Scan(m.{{$field.Name}}.GetValue())
+					if err := {{$field.VarName}}.Scan(m.{{$field.Name}}.GetValue()); err != nil {
+						return err
+					}
 				}
 			{{end}}
 		{{end}}
@@ -195,21 +205,21 @@ func (m *{{.Msg.Name}}) insert(db *sql.DB) error {
 
 	_, err := db.Exec(
 		{{.Msg.VarName}}InsertStmt,
-		{{range $index, $field := $.Msg.Fields}}
-			{{if $field.ShouldWrapWithSQLType}}
-				{{if eq $field.VarName "createdAt"}}
+		{{- range $index, $field := $.Msg.Fields}}
+			{{- if $field.ShouldWrapWithSQLType}}
+				{{- if eq $field.VarName "createdAt"}}
 					currentAt.AsTime(),
-				{{else if eq $field.VarName "updatedAt"}}
+				{{- else if eq $field.VarName "updatedAt"}}
 					currentAt.AsTime(),
-				{{else if eq $field.VarName "deletedAt"}}
+				{{- else if eq $field.VarName "deletedAt"}}
 					nil,
-				{{else}}
+				{{- else}}
 					{{$field.VarName}},
-				{{end}}
-			{{else}}
+				{{- end}}
+			{{- else}}
 				m.{{$field.Name}},
-			{{end}}
-		{{end}}
+			{{- end}}
+		{{- end}}
 	)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
@@ -232,7 +242,9 @@ func (m *{{.Msg.Name}}) update(db *sql.DB) error {
 			{{else}}
 				var {{$field.VarName}} {{$field.SQLType}}
 				if m.{{$field.Name}} != nil {
-					{{$field.VarName}}.Scan(m.{{$field.Name}}.GetValue())
+					if err := {{$field.VarName}}.Scan(m.{{$field.Name}}.GetValue()); err != nil {
+						return err
+					}
 				}
 			{{end}}
 		{{end}}
@@ -240,24 +252,24 @@ func (m *{{.Msg.Name}}) update(db *sql.DB) error {
 
 	_, err := db.Exec(
 		{{.Msg.VarName}}UpdateStmt,
-		{{range $index, $field := $.Msg.Fields}}
-			{{if $field.ShouldWrapWithSQLType}}
-				{{if eq $field.VarName "createdAt"}}
+		{{- range $index, $field := $.Msg.Fields}}
+			{{- if $field.ShouldWrapWithSQLType}}
+				{{- if eq $field.VarName "createdAt"}}
 					currentAt.AsTime(),
-				{{else if eq $field.VarName "updatedAt"}}
+				{{- else if eq $field.VarName "updatedAt"}}
 					currentAt.AsTime(),
-				{{else if eq $field.VarName "deletedAt"}}
+				{{- else if eq $field.VarName "deletedAt"}}
 					nil,
-				{{else}}
+				{{- else}}
 					{{$field.VarName}},
-				{{end}}
-			{{else}}
+				{{- end}}
+			{{- else}}
 				m.{{$field.Name}},
-			{{end}}
-		{{end}}
-		{{range $index, $field := .Msg.KeyFields}}
+			{{- end}}
+		{{- end}}
+		{{- range $index, $field := .Msg.KeyFields}}
 			m.{{$field.Name}},
-		{{end}}
+		{{- end}}
 	)
 	if err != nil {
 		return err
