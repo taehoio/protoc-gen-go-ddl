@@ -223,7 +223,7 @@ func (m *{{.Msg.Name}}) insert(db *sql.DB) error {
 	)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
-			return errors.New("duplicated entry")
+			return ErrDuplicateEntry 
 		}
 		return err
 	}
