@@ -27,6 +27,11 @@ const (
 	`
 )
 
+var (
+	_ = timestamppb.Timestamp{}
+	_ = wrapperspb.Int32Value{}
+)
+
 type {{.Msg.Name}}Recorder interface {
 	Get(db *sql.DB, id uint64) (*{{.Msg.Name}}, error)
 	Save(db *sql.DB) error
