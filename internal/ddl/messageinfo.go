@@ -17,8 +17,8 @@ import (
 )
 
 var (
-	//go:embed template/ddl.pb.go.tmpl
-	dmlTmpl string
+	//go:embed template/dml_message.pb.go.tmpl
+	dmlMessageTmpl string
 )
 
 type MessageInfo struct {
@@ -202,7 +202,7 @@ func (mi MessageInfo) GenerateDDLSQL() (string, error) {
 
 	var ddlFields []string
 	for _, field := range mi.Fields {
-		ddlFields = append(ddlFields, field.ToSQL())
+		ddlFields = append(ddlFields, field.ToDDLSQL())
 	}
 
 	var keys []string
@@ -274,14 +274,10 @@ type dmlField struct {
 	SQLName               string
 }
 
-func (mi MessageInfo) GenerateDMLSQL() (string, error) {
-	tmpl, err := template.New("dmlFile").Parse(dmlTmpl)
-	if err != nil {
-		return "", err
-	}
-
+func getGoPackageName(opts *descriptorpb.FileOptions) string {
 	pkgName := ""
-	goPkg := mi.message.Desc.ParentFile().Options().(*descriptorpb.FileOptions).GetGoPackage()
+
+	goPkg := opts.GetGoPackage()
 	goPkgSplitted := strings.Split(goPkg, ";")
 	if len(goPkgSplitted) >= 2 {
 		pkgName = goPkgSplitted[len(goPkgSplitted)-1]
@@ -289,6 +285,17 @@ func (mi MessageInfo) GenerateDMLSQL() (string, error) {
 		goPkgSplitted = strings.Split(goPkg, "/")
 		pkgName = goPkgSplitted[len(goPkgSplitted)-1]
 	}
+
+	return pkgName
+}
+
+func (mi MessageInfo) GenerateDMLSQL() (string, error) {
+	tmpl, err := template.New("dmlMessageTmpl").Parse(dmlMessageTmpl)
+	if err != nil {
+		return "", err
+	}
+
+	pkgName := getGoPackageName(mi.message.Desc.ParentFile().Options().(*descriptorpb.FileOptions))
 
 	keys, err := mi.extractKeys()
 	if err != nil {

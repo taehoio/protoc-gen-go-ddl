@@ -1,0 +1,9 @@
+package {{.Pkg.Name}}
+
+import (
+	"errors"
+)
+
+var (
+	ErrDuplicatedEntity = errors.New("duplicated entity")
+)

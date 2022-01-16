@@ -1,10 +1,18 @@
 package ddl
 
 import (
+	"bytes"
+	_ "embed"
 	"fmt"
+	"text/template"
 
 	"github.com/iancoleman/strcase"
 	"google.golang.org/protobuf/compiler/protogen"
+)
+
+var (
+	//go:embed template/dml.pb.go.tmpl
+	dmlTmpl string
 )
 
 func GenerateDDLFiles(version string, gen *protogen.Plugin) error {
@@ -15,8 +23,25 @@ func GenerateDDLFiles(version string, gen *protogen.Plugin) error {
 
 		sqlFileSuffix := "_ddl.pb.sql"
 		generatedSQLFile := gen.NewGeneratedFile(sourceFile.GeneratedFilenamePrefix+sqlFileSuffix, sourceFile.GoImportPath)
-
 		addFileHead(version, generatedSQLFile, gen, sourceFile)
+
+		dmlFileSuffix := "_dml.pb.go"
+		generatedDMLFile := gen.NewGeneratedFile(sourceFile.GeneratedFilenamePrefix+dmlFileSuffix, sourceFile.GoImportPath)
+		tmpl, err := template.New("dmlTmpl").Parse(dmlTmpl)
+		if err != nil {
+			return err
+		}
+
+		pkgName := getGoPackageName(sourceFile.Proto.Options)
+		var b bytes.Buffer
+		if err := tmpl.Execute(&b, &dml{
+			Pkg: dmlPackage{
+				Name: pkgName,
+			},
+		}); err != nil {
+			return err
+		}
+		generatedDMLFile.P(b.String())
 
 		for _, message := range sourceFile.Messages {
 			mi, err := NewMessageInfo(*message)
@@ -33,14 +58,14 @@ func GenerateDDLFiles(version string, gen *protogen.Plugin) error {
 			}
 			generatedSQLFile.P(stmts)
 
-			dmlFileSuffix := fmt.Sprintf("_dml_%s.pb.go", strcase.ToSnake(string(message.Desc.Name())))
-			gereratedDMLFile := gen.NewGeneratedFile(sourceFile.GeneratedFilenamePrefix+dmlFileSuffix, sourceFile.GoImportPath)
+			messageDMLFileSuffix := fmt.Sprintf("_dml_%s.pb.go", strcase.ToSnake(string(message.Desc.Name())))
+			gereratedMessageDMLFile := gen.NewGeneratedFile(sourceFile.GeneratedFilenamePrefix+messageDMLFileSuffix, sourceFile.GoImportPath)
 
 			d, err := mi.GenerateDMLSQL()
 			if err != nil {
 				return err
 			}
-			gereratedDMLFile.P(d)
+			gereratedMessageDMLFile.P(d)
 		}
 	}
 

@@ -99,5 +99,5 @@ func TestToSQL(t *testing.T) {
 
 	idField, err := NewField(*u.Fields[0])
 	assert.NoError(t, err)
-	assert.Equal(t, "`id` BIGINT UNSIGNED", idField.ToSQL())
+	assert.Equal(t, "`id` BIGINT UNSIGNED", idField.ToDDLSQL())
 }
