@@ -137,6 +137,6 @@ func (f Field) listFieldOptions() []FieldOption {
 	return fieldOptions
 }
 
-func (f Field) ToSQL() string {
+func (f Field) ToDDLSQL() string {
 	return fmt.Sprintf("`%s` %s", f.Name, f.Type)
 }
