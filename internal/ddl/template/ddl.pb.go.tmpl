@@ -1,0 +1,262 @@
+package {{.Pkg.Name}}
+
+import (
+	"database/sql"
+	"errors"
+	"strings"
+
+	"github.com/xissy/kubeflake"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
+)
+
+const (
+	{{.Msg.VarName}}InsertStmt = `
+		INSERT INTO {{.Msg.TableName}} (
+			{{range $index, $field := .Msg.Fields}}{{if $index}}, {{end}}{{$field.SQLName}}{{end}}
+		) VALUES (
+			{{range $index, $field := .Msg.Fields}}{{if $index}}, {{end}}?{{end}}
+		)
+	`
+
+	{{.Msg.VarName}}UpdateStmt = `
+		UPDATE {{.Msg.TableName}} SET
+			{{range $index, $field := .Msg.Fields}}{{if $index}}, {{end}}{{$field.SQLName}} = ?{{end}}
+		WHERE {{range $index, $field := .Msg.KeyFields}}{{if $index}} AND {{end}}{{$field.SQLName}} = ?{{end}}
+	`
+)
+
+type {{.Msg.Name}}Recorder interface {
+	Get(db *sql.DB, id uint64) (*{{.Msg.Name}}, error)
+	Save(db *sql.DB) error
+	{{range .Msg.Indices}}
+	FindOneBy{{.Name}}(
+		db *sql.DB,
+		{{range $index, $field := .FieldNames}}
+			{{$field}} interface{},
+		{{end}}) (*{{$.Msg.Name}}, error)
+	{{end}}
+}
+
+func (m *{{.Msg.Name}}) Get(db *sql.DB, id uint64) (*{{.Msg.Name}}, error) {
+	stmt, err := db.Prepare("SELECT * FROM {{.Msg.TableName}} WHERE id = ?")
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	var mm {{.Msg.Name}}
+
+	{{range $index, $field := .Msg.Fields}}
+		{{if $field.ShouldWrapWithSQLType}}
+			var {{$field.VarName}} {{$field.SQLType}}
+		{{end}}
+	{{end}}
+
+	if err = stmt.QueryRow(id).Scan(
+		{{range $index, $field := .Msg.Fields}}
+			{{if $field.ShouldWrapWithSQLType}}
+				&{{$field.VarName}},
+			{{else}}
+				&mm.{{.Name}}, 
+			{{end}}
+		{{end}}
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	{{range $index, $field := .Msg.Fields}}
+		{{if $field.ShouldWrapWithSQLType}}
+			if {{$field.VarName}}.Valid {
+				{{if eq $field.SQLType "sql.NullTime"}}
+					mm.{{$field.Name}} = timestamppb.New({{$field.VarName}}.Time)
+				{{end}}
+				{{if eq $field.SQLType "sql.NullString"}}
+					mm.{{$field.Name}} = &wrapperspb.StringValue{Value: {{$field.VarName}}.String}
+				{{end}}
+			}
+		{{end}}
+	{{end}}
+
+	return &mm, nil
+}
+
+{{range .Msg.Indices}}
+func (m *{{$.Msg.Name}}) FindOneBy{{.Name}}(
+	db *sql.DB,
+	{{range $index, $field := .FieldNames}}
+		{{$field}} interface{},
+	{{end}}) (*{{$.Msg.Name}}, error) {
+	stmt, err := db.Prepare("SELECT * FROM {{$.Msg.TableName}} WHERE {{range $index, $field := .FieldNames}}{{if $index}} AND {{end}}{{$field}}=?{{end}}")
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	var mm {{$.Msg.Name}}
+
+	{{range $index, $field := $.Msg.Fields}}
+		{{if $field.ShouldWrapWithSQLType}}
+			var {{$field.VarName}} {{$field.SQLType}}
+		{{end}}
+	{{end}}
+
+	if err = stmt.QueryRow({{range $index, $field := .FieldNames}}{{if $index}}, {{end}}{{$field}}{{end}}).Scan(
+		{{range $index, $field := $.Msg.Fields}}
+			{{if $field.ShouldWrapWithSQLType}}
+				&{{$field.VarName}},
+			{{else}}
+				&mm.{{.Name}}, 
+			{{end}}
+		{{end}}
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	{{range $index, $field := $.Msg.Fields}}
+		{{if $field.ShouldWrapWithSQLType}}
+			if {{$field.VarName}}.Valid {
+				{{if eq $field.SQLType "sql.NullTime"}}
+					mm.{{$field.Name}} = timestamppb.New({{$field.VarName}}.Time)
+				{{end}}
+				{{if eq $field.SQLType "sql.NullString"}}
+					mm.{{$field.Name}} = &wrapperspb.StringValue{Value: {{$field.VarName}}.String}
+				{{end}}
+			}
+		{{end}}
+	{{end}}
+
+	return &mm, nil
+}
+{{end}}
+
+func (m *{{.Msg.Name}}) Save(db *sql.DB) error {
+	if m.Id == 0 {
+		m.Id = kubeflake.Must(kubeflake.New())
+	}
+
+	shouldInsert := true
+	mm, err := m.Get(db, m.Id)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	if mm != nil {
+		shouldInsert = false
+	}
+
+	if shouldInsert {
+		if err := m.insert(db); err != nil {
+			return err
+		}
+	} else {
+		if err := m.update(db); err != nil {
+			return err
+		}
+	}
+
+	mm, err = m.Get(db, m.Id)
+	if err != nil {
+		return err
+	}
+
+	proto.Merge(m, mm)
+
+	return nil
+}
+
+func (m *{{.Msg.Name}}) insert(db *sql.DB) error {
+	currentAt := timestamppb.Now()
+
+	{{range $index, $field := $.Msg.Fields}}
+		{{if $field.ShouldWrapWithSQLType}}
+			{{if eq $field.VarName "createdAt"}}
+			{{else if eq $field.VarName "updatedAt"}}
+			{{else if eq $field.VarName "deletedAt"}}
+			{{else}}
+				var {{$field.VarName}} {{$field.SQLType}}
+				if m.{{$field.Name}} != nil {
+					{{$field.VarName}}.Scan(m.{{$field.Name}}.GetValue())
+				}
+			{{end}}
+		{{end}}
+	{{end}}
+
+	_, err := db.Exec(
+		{{.Msg.VarName}}InsertStmt,
+		{{range $index, $field := $.Msg.Fields}}
+			{{if $field.ShouldWrapWithSQLType}}
+				{{if eq $field.VarName "createdAt"}}
+					currentAt.AsTime(),
+				{{else if eq $field.VarName "updatedAt"}}
+					currentAt.AsTime(),
+				{{else if eq $field.VarName "deletedAt"}}
+					nil,
+				{{else}}
+					{{$field.VarName}},
+				{{end}}
+			{{else}}
+				m.{{$field.Name}},
+			{{end}}
+		{{end}}
+	)
+	if err != nil {
+		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+			return errors.New("duplicated entry")
+		}
+		return err
+	}
+
+	return nil
+}
+
+func (m *{{.Msg.Name}}) update(db *sql.DB) error {
+	currentAt := timestamppb.Now()
+
+	{{range $index, $field := $.Msg.Fields}}
+		{{if $field.ShouldWrapWithSQLType}}
+			{{if eq $field.VarName "createdAt"}}
+			{{else if eq $field.VarName "updatedAt"}}
+			{{else if eq $field.VarName "deletedAt"}}
+			{{else}}
+				var {{$field.VarName}} {{$field.SQLType}}
+				if m.{{$field.Name}} != nil {
+					{{$field.VarName}}.Scan(m.{{$field.Name}}.GetValue())
+				}
+			{{end}}
+		{{end}}
+	{{end}}
+
+	_, err := db.Exec(
+		{{.Msg.VarName}}UpdateStmt,
+		{{range $index, $field := $.Msg.Fields}}
+			{{if $field.ShouldWrapWithSQLType}}
+				{{if eq $field.VarName "createdAt"}}
+					currentAt.AsTime(),
+				{{else if eq $field.VarName "updatedAt"}}
+					currentAt.AsTime(),
+				{{else if eq $field.VarName "deletedAt"}}
+					nil,
+				{{else}}
+					{{$field.VarName}},
+				{{end}}
+			{{else}}
+				m.{{$field.Name}},
+			{{end}}
+		{{end}}
+		{{range $index, $field := .Msg.KeyFields}}
+			m.{{$field.Name}},
+		{{end}}
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

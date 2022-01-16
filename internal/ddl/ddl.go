@@ -2,6 +2,7 @@ package ddl
 
 import (
 	"fmt"
+	"strings"
 
 	"google.golang.org/protobuf/compiler/protogen"
 )
@@ -30,8 +31,16 @@ func GenerateDDLFiles(version string, gen *protogen.Plugin) error {
 			if err != nil {
 				return err
 			}
-
 			generatedSQLFile.P(stmts)
+
+			dmlFileSuffix := fmt.Sprintf("_dml_%s.pb.go", strings.ToLower(string(message.Desc.Name())))
+			gereratedDMLFile := gen.NewGeneratedFile(sourceFile.GeneratedFilenamePrefix+dmlFileSuffix, sourceFile.GoImportPath)
+
+			d, err := mi.GenerateDMLSQL()
+			if err != nil {
+				return err
+			}
+			gereratedDMLFile.P(d)
 		}
 	}
 
