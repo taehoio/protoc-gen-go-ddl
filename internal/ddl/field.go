@@ -14,9 +14,19 @@ import (
 type Field struct {
 	field protogen.Field
 
-	Name    string
-	Type    string
 	Options []FieldOption
+
+	TextName string
+	GoName   string
+	VarName  string
+	SQLName  string
+
+	PbKind  string
+	PbType  string
+	SQLType string
+	GoType  string
+
+	supportsSQLNullType bool
 }
 
 type FieldOption struct {
@@ -29,21 +39,19 @@ func NewField(field protogen.Field) (*Field, error) {
 		field: field,
 	}
 
-	f.Name = field.Desc.TextName()
+	f.TextName = field.Desc.TextName()
 
 	sqlType, err := f.kindToSQLType()
 	if err != nil {
 		return nil, err
 	}
-	f.Type = sqlType
+	f.SQLType = sqlType
 
 	fieldOptions := f.listFieldOptions()
 	f.Options = fieldOptions
 
 	return f, nil
 }
-
-const defaultVarcharLength = 255
 
 func (f Field) kindToSQLType() (string, error) {
 	kind := f.field.Desc.Kind()
@@ -138,5 +146,5 @@ func (f Field) listFieldOptions() []FieldOption {
 }
 
 func (f Field) ToDDLSQL() string {
-	return fmt.Sprintf("`%s` %s", f.Name, f.Type)
+	return fmt.Sprintf("`%s` %s", f.TextName, f.SQLType)
 }

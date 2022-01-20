@@ -25,7 +25,14 @@ type MessageInfo struct {
 	message protogen.Message
 
 	MessageOptions []MessageOption
-	Fields         []Field
+
+	Name    string
+	VarName string
+	GoName  string
+	SQLName string
+
+	Fields    []Field
+	KeyFields []Field
 
 	Keys    []string
 	Indices []Index
@@ -40,11 +47,13 @@ type MessageOption struct {
 type Index struct {
 	Name       string
 	FieldNames []string
+	Fields     []Field
 }
 
 type Unique struct {
 	Name       string
 	FieldNames []string
+	Fields     []Field
 }
 
 func NewMessageInfo(message protogen.Message) (*MessageInfo, error) {
@@ -121,7 +130,7 @@ func (mi MessageInfo) extractKeys() ([]string, error) {
 	for _, field := range mi.Fields {
 		for _, opt := range field.Options {
 			if opt.Name == string(protobufv1.E_Key.TypeDescriptor().FullName()) && opt.Value == "true" {
-				keys = append(keys, field.Name)
+				keys = append(keys, field.TextName)
 			}
 		}
 	}
@@ -141,7 +150,7 @@ func (mi MessageInfo) extractIndices() ([]Index, error) {
 					k := kv[0]
 					indexName := kv[1]
 					if k == "name" {
-						indexMap[indexName] = append(indexMap[indexName], field.Name)
+						indexMap[indexName] = append(indexMap[indexName], field.TextName)
 					}
 				}
 			}
@@ -171,7 +180,7 @@ func (mi MessageInfo) extractUniques() ([]Unique, error) {
 					k := kv[0]
 					uniqueName := kv[1]
 					if k == "name" {
-						uniqueMap[uniqueName] = append(uniqueMap[uniqueName], field.Name)
+						uniqueMap[uniqueName] = append(uniqueMap[uniqueName], field.TextName)
 					}
 				}
 			}
@@ -331,7 +340,7 @@ func (mi MessageInfo) GenerateDMLSQL() (string, error) {
 
 		isKey := false
 		for _, key := range keys {
-			if key == field.Name {
+			if key == field.TextName {
 				isKey = true
 				break
 			}
