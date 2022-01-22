@@ -72,7 +72,7 @@ func TestGenerateDDLSQL(t *testing.T) {
 	u, err := ddlUserMessage()
 	assert.NoError(t, err)
 
-	s, err := u.GenerateDDLSQL()
+	s, err := u.GenerateDDL()
 	assert.NoError(t, err)
 	assert.Equal(t, expected, s)
 }
@@ -82,7 +82,7 @@ func TestGenerateDDLSQL_FailsWithSQLLite(t *testing.T) {
 	assert.NoError(t, err)
 	u.MessageOptions = []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_SQLITE"}}
 
-	s, err := u.GenerateDDLSQL()
+	s, err := u.GenerateDDL()
 	assert.Error(t, ErrNotSupportedDatastore, err)
 	assert.Empty(t, s)
 }

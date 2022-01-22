@@ -41,7 +41,7 @@ func GenerateDDLFiles(version string, gen *protogen.Plugin) error {
 			sqlFileSuffix := fmt.Sprintf("_ddl_%s.pb.sql", messageName)
 			generatedSQLFile := gen.NewGeneratedFile(sourceFile.GeneratedFilenamePrefix+sqlFileSuffix, sourceFile.GoImportPath)
 			addSQLFileHead(version, generatedSQLFile, gen, sourceFile)
-			stmts, err := mi.GenerateDDLSQL()
+			stmts, err := mi.GenerateDDL()
 			if err == ErrNotSupportedDatastore {
 				continue
 			}
@@ -53,7 +53,7 @@ func GenerateDDLFiles(version string, gen *protogen.Plugin) error {
 			messageDMLFileSuffix := fmt.Sprintf("_dml_%s.pb.go", messageName)
 			gereratedMessageDMLFile := gen.NewGeneratedFile(sourceFile.GeneratedFilenamePrefix+messageDMLFileSuffix, sourceFile.GoImportPath)
 			addGoFileHead(version, gereratedMessageDMLFile, gen, sourceFile)
-			d, err := mi.GenerateDMLSQL()
+			d, err := mi.GenerateDML()
 			if err != nil {
 				return err
 			}
