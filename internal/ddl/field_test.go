@@ -72,7 +72,7 @@ func TestKindToSQLType(t *testing.T) {
 
 		tt := tests[i]
 		assert.EqualValues(t, tt.kind, pbField.Desc.Kind())
-		assert.EqualValues(t, tt.want, ddlField.Type)
+		assert.EqualValues(t, tt.want, ddlField.SQLType)
 	}
 }
 
@@ -80,15 +80,15 @@ func TestListFieldOptions(t *testing.T) {
 	u, err := userMessage()
 	assert.NoError(t, err)
 
-	idField, err := NewField(*u.Fields[0])
+	idField := *u.Fields[0]
 	assert.NoError(t, err)
-	idOpts := idField.listFieldOptions()
+	idOpts := listFieldOptions(idField)
 	assert.Len(t, idOpts, 1)
 	assert.Equal(t, FieldOption{Name: "taehoio.ddl.protobuf.v1.key", Value: "true"}, idOpts[0])
 
-	emailField, err := NewField(*u.Fields[6])
+	emailField := *u.Fields[6]
 	assert.NoError(t, err)
-	emailOpts := emailField.listFieldOptions()
+	emailOpts := listFieldOptions(emailField)
 	assert.Len(t, emailOpts, 2)
 	assert.Equal(t, FieldOption{Name: "taehoio.ddl.protobuf.v1.index", Value: "name=idx_email"}, emailOpts[1])
 }

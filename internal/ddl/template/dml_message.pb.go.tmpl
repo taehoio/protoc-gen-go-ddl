@@ -1,4 +1,4 @@
-package {{.Pkg.Name}}
+package {{.PackageName}}
 
 import (
 	"database/sql"
@@ -11,25 +11,25 @@ import (
 )
 
 const (
-	{{.Msg.VarName}}InsertStmt = `
-		INSERT INTO {{.Msg.TableName}} (
-			{{range $index, $field := .Msg.Fields}}
+	{{.Message.VarName}}InsertStmt = `
+		INSERT INTO {{.Message.SQLName}} (
+			{{range $index, $field := .Message.Fields}}
 				{{- if $index}}, {{end}}{{$field.SQLName}}
 			{{- end}}
 		) VALUES (
-			{{range $index, $field := .Msg.Fields}}
+			{{range $index, $field := .Message.Fields}}
 				{{- if $index}}, {{end}}?
 			{{- end}}
 		)
 	`
 
-	{{.Msg.VarName}}UpdateStmt = `
-		UPDATE {{.Msg.TableName}} SET
-			{{range $index, $field := .Msg.Fields}}
+	{{.Message.VarName}}UpdateStmt = `
+		UPDATE {{.Message.SQLName}} SET
+			{{range $index, $field := .Message.Fields}}
 				{{- if $index}}, {{end}}{{$field.SQLName}} = ?
 			{{- end}}
 		WHERE
-			{{range $index, $field := .Msg.KeyFields}}
+			{{range $index, $field := .Message.KeyFields}}
 				{{- if $index}} AND {{end}}{{$field.SQLName}} = ?
 			{{- end}}
 	`
@@ -40,39 +40,39 @@ var (
 	_ = wrapperspb.Int32Value{}
 )
 
-type {{.Msg.Name}}Recorder interface {
-	Get(db *sql.DB, id uint64) (*{{.Msg.Name}}, error)
+type {{.Message.Name}}Recorder interface {
+	Get(db *sql.DB, id uint64) (*{{.Message.Name}}, error)
 	Save(db *sql.DB) error
-	{{range .Msg.Indices -}}
-	FindOneBy{{.Name}}(db *sql.DB,
-		{{- range $index, $field := .FieldNames -}}
-			{{- if $index}}, {{end}}{{$field}} interface{}
+	{{range .Message.Indices -}}
+	FindOneBy{{range $index, $field := .Fields}}{{if $index}}And{{end}}{{$field.GoName}}{{end}}(db *sql.DB,
+		{{- range $index, $field := .Fields -}}
+			{{- if $index}}, {{end}}{{$field.GoName}} interface{}
 		{{- end -}}
-	) (*{{$.Msg.Name}}, error)
+	) (*{{$.Message.Name}}, error)
 	{{end}}
 }
 
-func (m *{{.Msg.Name}}) Get(db *sql.DB, id uint64) (*{{.Msg.Name}}, error) {
-	stmt, err := db.Prepare("SELECT * FROM {{.Msg.TableName}} WHERE id = ?")
+func (m *{{.Message.Name}}) Get(db *sql.DB, id uint64) (*{{.Message.Name}}, error) {
+	stmt, err := db.Prepare("SELECT * FROM {{.Message.SQLName}} WHERE id = ?")
 	if err != nil {
 		return nil, err
 	}
 	defer stmt.Close()
 
-	var mm {{.Msg.Name}}
+	var mm {{.Message.Name}}
 
-	{{range $index, $field := .Msg.Fields}}
-		{{- if $field.ShouldWrapWithSQLType}}
-			var {{$field.VarName}} {{$field.SQLType}}
+	{{range $index, $field := .Message.Fields}}
+		{{- if $field.SupportsSQLNullType}}
+			var {{$field.VarName}} {{$field.GoType}}
 		{{- end}}
 	{{- end}}
 
 	if err = stmt.QueryRow(id).Scan(
-		{{- range $index, $field := .Msg.Fields}}
-			{{- if $field.ShouldWrapWithSQLType}}
+		{{- range $index, $field := .Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
 				&{{$field.VarName}},
 			{{- else}}
-				&mm.{{.Name}}, 
+				&mm.{{$field.GoName}}, 
 			{{- end}}
 		{{- end}}
 	); err != nil {
@@ -82,14 +82,14 @@ func (m *{{.Msg.Name}}) Get(db *sql.DB, id uint64) (*{{.Msg.Name}}, error) {
 		return nil, err
 	}
 
-	{{range $index, $field := .Msg.Fields}}
-		{{- if $field.ShouldWrapWithSQLType}}
+	{{range $index, $field := .Message.Fields}}
+		{{- if $field.SupportsSQLNullType}}
 			if {{$field.VarName}}.Valid {
-				{{- if eq $field.SQLType "sql.NullTime"}}
-					mm.{{$field.Name}} = timestamppb.New({{$field.VarName}}.Time)
+				{{- if eq $field.GoType "sql.NullTime"}}
+					mm.{{$field.GoName}} = timestamppb.New({{$field.VarName}}.Time)
 				{{- end}}
-				{{- if eq $field.SQLType "sql.NullString"}}
-					mm.{{$field.Name}} = &wrapperspb.StringValue{Value: {{$field.VarName}}.String}
+				{{- if eq $field.GoType "sql.NullString"}}
+					mm.{{$field.GoName}} = &wrapperspb.StringValue{Value: {{$field.VarName}}.String}
 				{{- end}}
 			}
 		{{- end}}
@@ -98,31 +98,31 @@ func (m *{{.Msg.Name}}) Get(db *sql.DB, id uint64) (*{{.Msg.Name}}, error) {
 	return &mm, nil
 }
 
-{{range .Msg.Indices}}
-func (m *{{$.Msg.Name}}) FindOneBy{{.Name}}(db *sql.DB,
-	{{- range $index, $field := .FieldNames}}
-		{{- if $index}}, {{end}}{{$field}} interface{}
-	{{- end}}) (*{{$.Msg.Name}}, error) {
-	stmt, err := db.Prepare("SELECT * FROM {{$.Msg.TableName}} WHERE {{range $index, $field := .FieldNames}}{{if $index}} AND {{end}}{{$field}}=?{{end}}")
+{{range .Message.Indices}}
+func (m *{{$.Message.Name}}) FindOneBy{{range $index, $field := .Fields}}{{if $index}}And{{end}}{{$field.GoName}}{{end}}(db *sql.DB,
+	{{- range $index, $field := .Fields}}
+		{{- if $index}}, {{end}}{{$field.VarName}} interface{}
+	{{- end}}) (*{{$.Message.Name}}, error) {
+	stmt, err := db.Prepare("SELECT * FROM {{$.Message.SQLName}} WHERE {{range $index, $field := .Fields}}{{if $index}} AND {{end}}{{$field.SQLName}}=?{{end}}")
 	if err != nil {
 		return nil, err
 	}
 	defer stmt.Close()
 
-	var mm {{$.Msg.Name}}
+	var mm {{$.Message.Name}}
 
-	{{range $index, $field := $.Msg.Fields}}
-		{{- if $field.ShouldWrapWithSQLType}}
-			var {{$field.VarName}} {{$field.SQLType}}
+	{{range $index, $field := $.Message.Fields}}
+		{{- if $field.SupportsSQLNullType}}
+			var {{$field.VarName}} {{$field.GoType}}
 		{{- end}}
 	{{- end}}
 
-	if err = stmt.QueryRow({{range $index, $field := .FieldNames}}{{if $index}}, {{end}}{{$field}}{{end}}).Scan(
-		{{- range $index, $field := $.Msg.Fields}}
-			{{- if $field.ShouldWrapWithSQLType}}
+	if err = stmt.QueryRow({{range $index, $field := .Fields}}{{if $index}}, {{end}}{{$field.VarName}}{{end}}).Scan(
+		{{- range $index, $field := $.Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
 				&{{$field.VarName}},
 			{{- else}}
-				&mm.{{.Name}}, 
+				&mm.{{$field.GoName}}, 
 			{{- end}}
 		{{- end}}
 	); err != nil {
@@ -132,14 +132,14 @@ func (m *{{$.Msg.Name}}) FindOneBy{{.Name}}(db *sql.DB,
 		return nil, err
 	}
 
-	{{range $index, $field := $.Msg.Fields}}
-		{{- if $field.ShouldWrapWithSQLType}}
+	{{range $index, $field := $.Message.Fields}}
+		{{- if $field.SupportsSQLNullType}}
 			if {{$field.VarName}}.Valid {
-				{{- if eq $field.SQLType "sql.NullTime"}}
-					mm.{{$field.Name}} = timestamppb.New({{$field.VarName}}.Time)
+				{{- if eq $field.GoType "sql.NullTime"}}
+					mm.{{$field.GoName}} = timestamppb.New({{$field.VarName}}.Time)
 				{{- end}}
-				{{- if eq $field.SQLType "sql.NullString"}}
-					mm.{{$field.Name}} = &wrapperspb.StringValue{Value: {{$field.VarName}}.String}
+				{{- if eq $field.GoType "sql.NullString"}}
+					mm.{{$field.GoName}} = &wrapperspb.StringValue{Value: {{$field.VarName}}.String}
 				{{- end}}
 			}
 		{{- end}}
@@ -149,7 +149,7 @@ func (m *{{$.Msg.Name}}) FindOneBy{{.Name}}(db *sql.DB,
 }
 {{end}}
 
-func (m *{{.Msg.Name}}) Save(db *sql.DB) error {
+func (m *{{.Message.Name}}) Save(db *sql.DB) error {
 	if m.Id == 0 {
 		m.Id = kubeflake.Must(kubeflake.New())
 	}
@@ -183,18 +183,18 @@ func (m *{{.Msg.Name}}) Save(db *sql.DB) error {
 	return nil
 }
 
-func (m *{{.Msg.Name}}) insert(db *sql.DB) error {
+func (m *{{.Message.Name}}) insert(db *sql.DB) error {
 	currentAt := timestamppb.Now()
 
-	{{range $index, $field := $.Msg.Fields}}
-		{{if $field.ShouldWrapWithSQLType}}
+	{{range $index, $field := $.Message.Fields}}
+		{{if $field.SupportsSQLNullType}}
 			{{if eq $field.VarName "createdAt"}}
 			{{else if eq $field.VarName "updatedAt"}}
 			{{else if eq $field.VarName "deletedAt"}}
 			{{else}}
-				var {{$field.VarName}} {{$field.SQLType}}
-				if m.{{$field.Name}} != nil {
-					if err := {{$field.VarName}}.Scan(m.{{$field.Name}}.GetValue()); err != nil {
+				var {{$field.VarName}} {{$field.GoType}}
+				if m.{{$field.GoName}} != nil {
+					if err := {{$field.VarName}}.Scan(m.{{$field.GoName}}.GetValue()); err != nil {
 						return err
 					}
 				}
@@ -203,9 +203,9 @@ func (m *{{.Msg.Name}}) insert(db *sql.DB) error {
 	{{end}}
 
 	_, err := db.Exec(
-		{{.Msg.VarName}}InsertStmt,
-		{{- range $index, $field := $.Msg.Fields}}
-			{{- if $field.ShouldWrapWithSQLType}}
+		{{.Message.VarName}}InsertStmt,
+		{{- range $index, $field := $.Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
 				{{- if eq $field.VarName "createdAt"}}
 					currentAt.AsTime(),
 				{{- else if eq $field.VarName "updatedAt"}}
@@ -216,7 +216,7 @@ func (m *{{.Msg.Name}}) insert(db *sql.DB) error {
 					{{$field.VarName}},
 				{{- end}}
 			{{- else}}
-				m.{{$field.Name}},
+				m.{{$field.GoName}},
 			{{- end}}
 		{{- end}}
 	)
@@ -230,18 +230,18 @@ func (m *{{.Msg.Name}}) insert(db *sql.DB) error {
 	return nil
 }
 
-func (m *{{.Msg.Name}}) update(db *sql.DB) error {
+func (m *{{.Message.Name}}) update(db *sql.DB) error {
 	currentAt := timestamppb.Now()
 
-	{{range $index, $field := $.Msg.Fields}}
-		{{if $field.ShouldWrapWithSQLType}}
+	{{range $index, $field := $.Message.Fields}}
+		{{if $field.SupportsSQLNullType}}
 			{{if eq $field.VarName "createdAt"}}
 			{{else if eq $field.VarName "updatedAt"}}
 			{{else if eq $field.VarName "deletedAt"}}
 			{{else}}
-				var {{$field.VarName}} {{$field.SQLType}}
-				if m.{{$field.Name}} != nil {
-					if err := {{$field.VarName}}.Scan(m.{{$field.Name}}.GetValue()); err != nil {
+				var {{$field.VarName}} {{$field.GoType}}
+				if m.{{$field.GoName}} != nil {
+					if err := {{$field.VarName}}.Scan(m.{{$field.GoName}}.GetValue()); err != nil {
 						return err
 					}
 				}
@@ -250,9 +250,9 @@ func (m *{{.Msg.Name}}) update(db *sql.DB) error {
 	{{end}}
 
 	_, err := db.Exec(
-		{{.Msg.VarName}}UpdateStmt,
-		{{- range $index, $field := $.Msg.Fields}}
-			{{- if $field.ShouldWrapWithSQLType}}
+		{{.Message.VarName}}UpdateStmt,
+		{{- range $index, $field := $.Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
 				{{- if eq $field.VarName "createdAt"}}
 					currentAt.AsTime(),
 				{{- else if eq $field.VarName "updatedAt"}}
@@ -263,11 +263,11 @@ func (m *{{.Msg.Name}}) update(db *sql.DB) error {
 					{{$field.VarName}},
 				{{- end}}
 			{{- else}}
-				m.{{$field.Name}},
+				m.{{$field.GoName}},
 			{{- end}}
 		{{- end}}
-		{{- range $index, $field := .Msg.KeyFields}}
-			m.{{$field.Name}},
+		{{- range $index, $field := .Message.KeyFields}}
+			m.{{$field.GoName}},
 		{{- end}}
 	)
 	if err != nil {
