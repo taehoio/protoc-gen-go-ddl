@@ -16,29 +16,29 @@ func ddlUserMessage() (*MessageInfo, error) {
 }
 
 func TestListMessageOptions(t *testing.T) {
-	u, err := ddlUserMessage()
+	u, err := userMessage()
 	assert.NoError(t, err)
 
-	opts, err := u.listMessageOptions()
+	opts, err := listMessageOptions(*u)
 	assert.NoError(t, err)
 	assert.Len(t, opts, 1)
 	assert.Equal(t, MessageOption{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"}, opts[0])
 }
 
 func TestExtractFields(t *testing.T) {
-	u, err := ddlUserMessage()
+	u, err := userMessage()
 	assert.NoError(t, err)
 
-	fields, err := u.extractFields()
+	fields, err := extractFields(*u)
 	assert.NoError(t, err)
 	assert.Len(t, fields, 7)
 }
 
-func TestExtractKeys(t *testing.T) {
+func TestExtractKeyFields(t *testing.T) {
 	u, err := ddlUserMessage()
 	assert.NoError(t, err)
 
-	fieldNames, err := u.extractKeys()
+	fieldNames, err := extractKeyFields(u.Fields)
 	assert.NoError(t, err)
 	assert.Len(t, fieldNames, 1)
 }
@@ -47,7 +47,7 @@ func TestExtractIndices(t *testing.T) {
 	u, err := ddlUserMessage()
 	assert.NoError(t, err)
 
-	indices, err := u.extractIndices()
+	indices, err := extractIndices(u.Fields)
 	assert.NoError(t, err)
 	assert.Len(t, indices, 1)
 }

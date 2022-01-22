@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 
 	"github.com/iancoleman/strcase"
+
 	protobufv1 "github.com/taehoio/ddl/gen/go/taehoio/ddl/protobuf/v1"
 )
 
