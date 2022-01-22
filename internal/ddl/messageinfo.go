@@ -206,7 +206,7 @@ var (
 	ErrNotSupportedDatastore = fmt.Errorf("not supported datastore")
 )
 
-func (mi MessageInfo) GenerateDDLSQL() (string, error) {
+func (mi MessageInfo) GenerateDDL() (string, error) {
 	tableName := mi.SQLName
 
 	if !mi.supportsMySQL() {
@@ -279,7 +279,7 @@ func getGoPackageName(opts *descriptorpb.FileOptions) string {
 	return pkgName
 }
 
-func (mi MessageInfo) GenerateDMLSQL() (string, error) {
+func (mi MessageInfo) GenerateDML() (string, error) {
 	tmpl, err := template.New("dmlMessageTmpl").Parse(dmlMessageTmpl)
 	if err != nil {
 		return "", err
