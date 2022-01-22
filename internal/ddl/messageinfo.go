@@ -10,7 +10,6 @@ import (
 	"github.com/iancoleman/strcase"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 
 	protobufv1 "github.com/taehoio/ddl/gen/go/taehoio/ddl/protobuf/v1"
@@ -33,10 +32,8 @@ type MessageInfo struct {
 
 	Fields    []Field
 	KeyFields []Field
-
-	Keys    []string
-	Indices []Index
-	Uniques []Unique
+	Indices   []Index
+	Uniques   []Unique
 }
 
 type MessageOption struct {
@@ -45,59 +42,66 @@ type MessageOption struct {
 }
 
 type Index struct {
-	Name       string
-	FieldNames []string
-	Fields     []Field
+	Name   string
+	Fields []Field
 }
 
 type Unique struct {
-	Name       string
-	FieldNames []string
-	Fields     []Field
+	Name   string
+	Fields []Field
 }
 
 func NewMessageInfo(message protogen.Message) (*MessageInfo, error) {
-	t := &MessageInfo{
+	messageOptions, err := listMessageOptions(message)
+	if err != nil {
+		return nil, err
+	}
+
+	fields, err := extractFields(message)
+	if err != nil {
+		return nil, err
+	}
+
+	keyFields, err := extractKeyFields(fields)
+	if err != nil {
+		return nil, err
+	}
+
+	indices, err := extractIndices(fields)
+	if err != nil {
+		return nil, err
+	}
+
+	uniques, err := extractUniques(fields)
+	if err != nil {
+		return nil, err
+	}
+
+	messageName := string(message.Desc.Name())
+
+	mi := &MessageInfo{
 		message: message,
+
+		MessageOptions: messageOptions,
+
+		Name:    messageName,
+		VarName: strcase.ToLowerCamel(messageName),
+		GoName:  strcase.ToCamel(messageName),
+		SQLName: strcase.ToSnake(messageName),
+
+		Fields:    fields,
+		KeyFields: keyFields,
+		Indices:   indices,
+		Uniques:   uniques,
 	}
 
-	messageOptions, err := t.listMessageOptions()
-	if err != nil {
-		return nil, err
-	}
-	t.MessageOptions = messageOptions
-
-	fields, err := t.extractFields()
-	if err != nil {
-		return nil, err
-	}
-	t.Fields = fields
-
-	keys, err := t.extractKeys()
-	if err != nil {
-		return nil, err
-	}
-	t.Keys = keys
-
-	indices, err := t.extractIndices()
-	if err != nil {
-		return nil, err
-	}
-	t.Indices = indices
-
-	uniques, err := t.extractUniques()
-	if err != nil {
-		return nil, err
-	}
-	t.Uniques = uniques
-
-	return t, nil
+	return mi, nil
 }
 
-func (mi MessageInfo) listMessageOptions() ([]MessageOption, error) {
+func listMessageOptions(m protogen.Message) ([]MessageOption, error) {
 	var messageOptions []MessageOption
 
-	opts := mi.message.Desc.Options().(*descriptorpb.MessageOptions)
+	opts := m.Desc.Options().(*descriptorpb.MessageOptions)
 
 	datastoreTypeOptVal := proto.GetExtension(opts, protobufv1.E_DatastoreType).(protobufv1.DatastoreType)
 
@@ -109,10 +113,10 @@ func (mi MessageInfo) listMessageOptions() ([]MessageOption, error) {
 	return messageOptions, nil
 }
 
-func (mi MessageInfo) extractFields() ([]Field, error) {
+func extractFields(m protogen.Message) ([]Field, error) {
 	var fields []Field
 
-	for _, field := range mi.message.Fields {
+	for _, field := range m.Fields {
 		f, err := NewField(*field)
 		if err != nil {
 			return nil, err
@@ -124,24 +128,24 @@ func (mi MessageInfo) extractFields() ([]Field, error) {
 	return fields, nil
 }
 
-func (mi MessageInfo) extractKeys() ([]string, error) {
-	var keys []string
+func extractKeyFields(fields []Field) ([]Field, error) {
+	var keyFields []Field
 
-	for _, field := range mi.Fields {
+	for _, field := range fields {
 		for _, opt := range field.Options {
 			if opt.Name == string(protobufv1.E_Key.TypeDescriptor().FullName()) && opt.Value == "true" {
-				keys = append(keys, field.TextName)
+				keyFields = append(keyFields, field)
 			}
 		}
 	}
 
-	return keys, nil
+	return keyFields, nil
 }
 
-func (mi MessageInfo) extractIndices() ([]Index, error) {
-	indexMap := make(map[string][]string)
+func extractIndices(fields []Field) ([]Index, error) {
+	indexMap := make(map[string][]Field)
 
-	for _, field := range mi.Fields {
+	for _, field := range fields {
 		for _, opt := range field.Options {
 			if opt.Name == string(protobufv1.E_Index.TypeDescriptor().FullName()) {
 				kvPairs := strings.Split(opt.Value, ",")
@@ -150,7 +154,7 @@ func (mi MessageInfo) extractIndices() ([]Index, error) {
 					k := kv[0]
 					indexName := kv[1]
 					if k == "name" {
-						indexMap[indexName] = append(indexMap[indexName], field.TextName)
+						indexMap[indexName] = append(indexMap[indexName], field)
 					}
 				}
 			}
@@ -160,18 +164,18 @@ func (mi MessageInfo) extractIndices() ([]Index, error) {
 	var indices []Index
 	for k, v := range indexMap {
 		indices = append(indices, Index{
-			Name:       k,
-			FieldNames: v,
+			Name:   k,
+			Fields: v,
 		})
 	}
 
 	return indices, nil
 }
 
-func (mi MessageInfo) extractUniques() ([]Unique, error) {
-	uniqueMap := make(map[string][]string)
+func extractUniques(fields []Field) ([]Unique, error) {
+	uniqueMap := make(map[string][]Field)
 
-	for _, field := range mi.Fields {
+	for _, field := range fields {
 		for _, opt := range field.Options {
 			if opt.Name == string(protobufv1.E_Unique.TypeDescriptor().FullName()) {
 				kvPairs := strings.Split(opt.Value, ",")
@@ -180,7 +184,7 @@ func (mi MessageInfo) extractUniques() ([]Unique, error) {
 					k := kv[0]
 					uniqueName := kv[1]
 					if k == "name" {
-						uniqueMap[uniqueName] = append(uniqueMap[uniqueName], field.TextName)
+						uniqueMap[uniqueName] = append(uniqueMap[uniqueName], field)
 					}
 				}
 			}
@@ -190,8 +194,8 @@ func (mi MessageInfo) extractUniques() ([]Unique, error) {
 	var uniques []Unique
 	for k, v := range uniqueMap {
 		uniques = append(uniques, Unique{
-			Name:       k,
-			FieldNames: v,
+			Name:   k,
+			Fields: v,
 		})
 	}
 
@@ -203,7 +207,7 @@ var (
 )
 
 func (mi MessageInfo) GenerateDDLSQL() (string, error) {
-	tableName := strcase.ToSnake(string(mi.message.Desc.Name()))
+	tableName := mi.SQLName
 
 	if !mi.supportsMySQL() {
 		return "", ErrNotSupportedDatastore
@@ -215,8 +219,8 @@ func (mi MessageInfo) GenerateDDLSQL() (string, error) {
 	}
 
 	var keys []string
-	for _, k := range mi.Keys {
-		keys = append(keys, fmt.Sprintf("`%s`", k))
+	for _, k := range mi.KeyFields {
+		keys = append(keys, fmt.Sprintf("`%s`", k.SQLName))
 	}
 
 	ddlCreateTable := fmt.Sprintf("\nCREATE TABLE `%s` (\n\t%v,\n\tPRIMARY KEY (%s)\n);", tableName, strings.Join(ddlFields, ",\n\t"), strings.Join(keys, ", "))
@@ -226,8 +230,8 @@ func (mi MessageInfo) GenerateDDLSQL() (string, error) {
 
 	for _, index := range mi.Indices {
 		var indexFieldNames []string
-		for _, ifn := range index.FieldNames {
-			indexFieldNames = append(indexFieldNames, fmt.Sprintf("`%s`", ifn))
+		for _, ifn := range index.Fields {
+			indexFieldNames = append(indexFieldNames, fmt.Sprintf("`%s`", ifn.SQLName))
 		}
 
 		stmts = append(stmts, fmt.Sprintf("\nCREATE INDEX `%s` ON `%s` (%s);", index.Name, tableName, strings.Join(indexFieldNames, ", ")))
@@ -235,8 +239,8 @@ func (mi MessageInfo) GenerateDDLSQL() (string, error) {
 
 	for _, unique := range mi.Uniques {
 		var uniqueFieldNames []string
-		for _, ufn := range unique.FieldNames {
-			uniqueFieldNames = append(uniqueFieldNames, fmt.Sprintf("`%s`", ufn))
+		for _, ufn := range unique.Fields {
+			uniqueFieldNames = append(uniqueFieldNames, fmt.Sprintf("`%s`", ufn.SQLName))
 		}
 
 		stmts = append(stmts, fmt.Sprintf("\nCREATE UNIQUE INDEX `%s` ON `%s` (%s);", unique.Name, tableName, strings.Join(uniqueFieldNames, ", ")))
@@ -256,31 +260,8 @@ func (mi MessageInfo) supportsMySQL() bool {
 }
 
 type dml struct {
-	Pkg dmlPackage
-	Msg dmlMessage
-}
-
-type dmlPackage struct {
-	Name string
-}
-
-type dmlMessage struct {
-	Name      string
-	VarName   string
-	TableName string
-	Fields    []dmlField
-	KeyFields []dmlField
-	Indices   []Index
-}
-
-type dmlField struct {
-	Name                  string
-	VarName               string
-	Kind                  string
-	Type                  string
-	ShouldWrapWithSQLType bool
-	SQLType               string
-	SQLName               string
+	PackageName string
+	Message     MessageInfo
 }
 
 func getGoPackageName(opts *descriptorpb.FileOptions) string {
@@ -306,83 +287,10 @@ func (mi MessageInfo) GenerateDMLSQL() (string, error) {
 
 	pkgName := getGoPackageName(mi.message.Desc.ParentFile().Options().(*descriptorpb.FileOptions))
 
-	keys, err := mi.extractKeys()
-	if err != nil {
-		return "", err
-	}
-
-	indices, err := mi.extractIndices()
-	if err != nil {
-		return "", err
-	}
-
-	var dmlFields []dmlField
-	var keyFields []dmlField
-
-	for _, field := range mi.Fields {
-		fieldType := ""
-		if field.field.Desc.Message() != nil {
-			fieldType = string(field.field.Desc.Message().FullName())
-		}
-
-		shouldWrapWithSQLType := false
-		sqlType := ""
-		if field.field.Desc.Kind() == protoreflect.MessageKind {
-			shouldWrapWithSQLType = true
-
-			if fieldType == "google.protobuf.Timestamp" {
-				sqlType = "sql.NullTime"
-			}
-			if fieldType == "google.protobuf.StringValue" {
-				sqlType = "sql.NullString"
-			}
-		}
-
-		isKey := false
-		for _, key := range keys {
-			if key == field.TextName {
-				isKey = true
-				break
-			}
-		}
-
-		f := dmlField{
-			Name:                  field.field.GoName,
-			VarName:               strcase.ToLowerCamel(field.field.GoName),
-			Kind:                  field.field.Desc.Kind().String(),
-			Type:                  fieldType,
-			ShouldWrapWithSQLType: shouldWrapWithSQLType,
-			SQLType:               sqlType,
-			SQLName:               strcase.ToSnake(field.field.GoName),
-		}
-
-		dmlFields = append(dmlFields, f)
-		if isKey {
-			keyFields = append(keyFields, f)
-		}
-	}
-
-	for i, index := range indices {
-		var camelCaseFieldNames []string
-		for _, fieldName := range index.FieldNames {
-			camelCaseFieldNames = append(camelCaseFieldNames, strcase.ToCamel(fieldName))
-		}
-		indices[i].Name = strings.Join(camelCaseFieldNames, "And")
-	}
-
 	var b bytes.Buffer
 	if err := tmpl.Execute(&b, &dml{
-		Pkg: dmlPackage{
-			Name: pkgName,
-		},
-		Msg: dmlMessage{
-			Name:      strcase.ToCamel(string(mi.message.Desc.Name())),
-			VarName:   strcase.ToLowerCamel(string(mi.message.Desc.Name())),
-			TableName: strcase.ToSnake((string(mi.message.Desc.Name()))),
-			Fields:    dmlFields,
-			KeyFields: keyFields,
-			Indices:   indices,
-		},
+		PackageName: pkgName,
+		Message:     mi,
 	}); err != nil {
 		return "", err
 	}

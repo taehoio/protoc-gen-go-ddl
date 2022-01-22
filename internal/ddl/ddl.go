@@ -73,9 +73,7 @@ func generateDML(sourceFile *protogen.File) (string, error) {
 	pkgName := getGoPackageName(sourceFile.Proto.Options)
 	var b bytes.Buffer
 	if err := tmpl.Execute(&b, &dml{
-		Pkg: dmlPackage{
-			Name: pkgName,
-		},
+		PackageName: pkgName,
 	}); err != nil {
 		return "", err
 	}
