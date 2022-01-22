@@ -44,7 +44,7 @@ type {{.Message.Name}}Recorder interface {
 	Get(db *sql.DB, id uint64) (*{{.Message.Name}}, error)
 	Save(db *sql.DB) error
 	{{range .Message.Indices -}}
-	FindOneBy{{.Name}}(db *sql.DB,
+	FindOneBy{{range $index, $field := .Fields}}{{if $index}}And{{end}}{{$field.GoName}}{{end}}(db *sql.DB,
 		{{- range $index, $field := .Fields -}}
 			{{- if $index}}, {{end}}{{$field.GoName}} interface{}
 		{{- end -}}
