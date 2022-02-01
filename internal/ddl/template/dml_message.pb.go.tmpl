@@ -72,7 +72,7 @@ func (m *{{.Message.Name}}) Get(db *sql.DB, id uint64) (*{{.Message.Name}}, erro
 			{{- if $field.SupportsSQLNullType}}
 				&{{$field.VarName}},
 			{{- else}}
-				&mm.{{$field.GoName}}, 
+				&mm.{{$field.GoName}},
 			{{- end}}
 		{{- end}}
 	); err != nil {
@@ -96,6 +96,155 @@ func (m *{{.Message.Name}}) Get(db *sql.DB, id uint64) (*{{.Message.Name}}, erro
 	{{- end}}
 
 	return &mm, nil
+}
+
+func (m *{{.Message.Name}}) List(db *sql.DB, lastID *wrapperspb.UInt64Value, asc bool, limit int64) ([]*{{.Message.Name}}, error) {
+	q := "SELECT * FROM {{.Message.SQLName}}"
+	if lastID != nil {
+		if asc {
+			q += " WHERE id > ?"
+		} else {
+			q += " WHERE id < ?"
+		}
+	}
+	if asc {
+		q += " ORDER BY id ASC"
+	} else {
+		q += " ORDER BY id DESC"
+	}
+	q += " LIMIT ?"
+
+	stmt, err := db.Prepare(q)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	var args []interface{}
+	if lastID != nil {
+		args = append(args, lastID.Value)
+	}
+	args = append(args, limit)
+
+	rows, err := stmt.Query(args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var arr []*{{.Message.Name}}
+
+	for rows.Next() {
+		var mm {{.Message.Name}}
+
+		{{range $index, $field := .Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				var {{$field.VarName}} {{$field.GoType}}
+			{{- end}}
+		{{- end}}
+
+		if err = rows.Scan(
+			{{- range $index, $field := .Message.Fields}}
+				{{- if $field.SupportsSQLNullType}}
+					&{{$field.VarName}},
+				{{- else}}
+					&mm.{{$field.GoName}},
+				{{- end}}
+			{{- end}}
+		); err != nil {
+			return nil, err
+		}
+
+		{{range $index, $field := .Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				if {{$field.VarName}}.Valid {
+					{{- if eq $field.GoType "sql.NullTime"}}
+						mm.{{$field.GoName}} = timestamppb.New({{$field.VarName}}.Time)
+					{{- end}}
+					{{- if eq $field.GoType "sql.NullString"}}
+						mm.{{$field.GoName}} = &wrapperspb.StringValue{Value: {{$field.VarName}}.String}
+					{{- end}}
+				}
+			{{- end}}
+		{{- end}}
+
+		arr = append(arr, &mm)
+	}
+
+	return arr, nil
+}
+
+func (m *{{.Message.Name}}) FindByIDs(db *sql.DB, ids []uint64) ([]*{{.Message.Name}}, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	q := "SELECT * FROM {{.Message.SQLName}} WHERE id IN ("
+	for i := range ids {
+		if i > 0 {
+			q += ", "
+		}
+		q += "?"
+	}
+	q += ")"
+
+	stmt, err := db.Prepare(q)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	var args []interface{}
+	for _, id := range ids {
+		args = append(args, id)
+	}
+
+	rows, err := stmt.Query(args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var arr []*{{.Message.Name}}
+
+	for rows.Next() {
+		var mm {{.Message.Name}}
+
+		{{range $index, $field := .Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				var {{$field.VarName}} {{$field.GoType}}
+			{{- end}}
+		{{- end}}
+
+		if err = rows.Scan(
+			{{- range $index, $field := .Message.Fields}}
+				{{- if $field.SupportsSQLNullType}}
+					&{{$field.VarName}},
+				{{- else}}
+					&mm.{{$field.GoName}},
+				{{- end}}
+			{{- end}}
+		); err != nil {
+			return nil, err
+		}
+
+		{{range $index, $field := .Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				if {{$field.VarName}}.Valid {
+					{{- if eq $field.GoType "sql.NullTime"}}
+						mm.{{$field.GoName}} = timestamppb.New({{$field.VarName}}.Time)
+					{{- end}}
+					{{- if eq $field.GoType "sql.NullString"}}
+						mm.{{$field.GoName}} = &wrapperspb.StringValue{Value: {{$field.VarName}}.String}
+					{{- end}}
+				}
+			{{- end}}
+		{{- end}}
+
+		arr = append(arr, &mm)
+	}
+
+	return arr, nil
 }
 
 {{range .Message.Indices}}
@@ -122,7 +271,7 @@ func (m *{{$.Message.Name}}) FindOneBy{{range $index, $field := .Fields}}{{if $i
 			{{- if $field.SupportsSQLNullType}}
 				&{{$field.VarName}},
 			{{- else}}
-				&mm.{{$field.GoName}}, 
+				&mm.{{$field.GoName}},
 			{{- end}}
 		{{- end}}
 	); err != nil {
