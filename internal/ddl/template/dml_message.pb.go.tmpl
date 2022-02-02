@@ -45,6 +45,7 @@ var (
 type {{.Message.Name}}Recorder interface {
 	Get(db *sql.DB, id uint64) (*{{.Message.Name}}, error)
 	List(db *sql.DB, lastID *wrapperspb.UInt64Value, asc bool, limit int64) ([]*{{.Message.Name}}, error)
+	FindByIDs(db *sql.DB, ids []uint64) ([]*{{.Message.Name}}, error)
 	Save(db *sql.DB) error
 	{{range .Message.Indices -}}
 	FindOneBy{{range $index, $field := .Fields}}{{if $index}}And{{end}}{{$field.GoName}}{{end}}(db *sql.DB,
