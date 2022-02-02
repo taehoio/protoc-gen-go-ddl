@@ -4,6 +4,7 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"path/filepath"
 	"text/template"
 
 	"github.com/iancoleman/strcase"
@@ -50,10 +51,14 @@ func GenerateDDLFiles(version string, gen *protogen.Plugin) error {
 			}
 			generatedSQLFile.P(stmts)
 
-			messageDMLFileSuffix := fmt.Sprintf("_dml_%s.pb.go", messageName)
-			gereratedMessageDMLFile := gen.NewGeneratedFile(sourceFile.GeneratedFilenamePrefix+messageDMLFileSuffix, sourceFile.GoImportPath)
+			messageDMLFilepath := fmt.Sprintf("%s_dml_%s.pb.go", sourceFile.GeneratedFilenamePrefix, messageName)
+			gereratedMessageDMLFile := gen.NewGeneratedFile(messageDMLFilepath, sourceFile.GoImportPath)
 			addGoFileHead(version, gereratedMessageDMLFile, gen, sourceFile)
-			d, err := mi.GenerateDML()
+
+			messageDMLFilename := filepath.Base(messageDMLFilepath)
+			messageDMLMockFilepath := fmt.Sprintf("%s_dml_%s_mock.pb.go", sourceFile.GeneratedFilenamePrefix, messageName)
+			messageDMLMockFilename := filepath.Base(messageDMLMockFilepath)
+			d, err := mi.GenerateDML(messageDMLFilename, messageDMLMockFilename)
 			if err != nil {
 				return err
 			}
