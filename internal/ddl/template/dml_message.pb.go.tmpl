@@ -296,6 +296,67 @@ func (m *{{$.Message.Name}}) FindOneBy{{range $index, $field := .Fields}}{{if $i
 
 	return &mm, nil
 }
+
+func (m *{{$.Message.Name}}) FindBy{{range $index, $field := .Fields}}{{if $index}}And{{end}}{{$field.GoName}}{{end}}(db *sql.DB,
+	{{- range $index, $field := .Fields}}
+		{{- if $index}}, {{end}}{{$field.VarName}} interface{}
+	{{- end}}) ([]*{{$.Message.Name}}, error) {
+	stmt, err := db.Prepare("SELECT * FROM {{$.Message.SQLName}} WHERE {{range $index, $field := .Fields}}{{if $index}} AND {{end}}{{$field.SQLName}}=?{{end}}")
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query({{range $index, $field := .Fields}}{{if $index}}, {{end}}{{$field.VarName}}{{end}})
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var arr []*{{$.Message.Name}}
+
+	for rows.Next() {
+		var mm {{$.Message.Name}}
+
+		{{range $index, $field := $.Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				var {{$field.VarName}} {{$field.GoType}}
+			{{- end}}
+		{{- end}}
+
+		if err = rows.Scan(
+			{{- range $index, $field := $.Message.Fields}}
+				{{- if $field.SupportsSQLNullType}}
+					&{{$field.VarName}},
+				{{- else}}
+					&mm.{{$field.GoName}},
+				{{- end}}
+			{{- end}}
+		); err != nil {
+			if err == sql.ErrNoRows {
+				return nil, nil
+			}
+			return nil, err
+		}
+
+		{{range $index, $field := $.Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				if {{$field.VarName}}.Valid {
+					{{- if eq $field.GoType "sql.NullTime"}}
+						mm.{{$field.GoName}} = timestamppb.New({{$field.VarName}}.Time)
+					{{- end}}
+					{{- if eq $field.GoType "sql.NullString"}}
+						mm.{{$field.GoName}} = &wrapperspb.StringValue{Value: {{$field.VarName}}.String}
+					{{- end}}
+				}
+			{{- end}}
+		{{end}}
+
+		arr = append(arr, &mm)
+	}
+
+	return arr, nil
+}
 {{end}}
 
 func (m *{{.Message.Name}}) Save(db *sql.DB) error {
