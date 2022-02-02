@@ -50,12 +50,12 @@ type {{.Message.Name}}Recorder interface {
 	{{range .Message.Indices -}}
 	FindOneBy{{range $index, $field := .Fields}}{{if $index}}And{{end}}{{$field.GoName}}{{end}}(db *sql.DB,
 		{{- range $index, $field := .Fields -}}
-			{{- if $index}}, {{end}}{{$field.GoName}} interface{}
+			{{- if $index}}, {{end}}{{$field.VarName}} interface{}
 		{{- end -}}
 	) (*{{$.Message.Name}}, error)
 	FindBy{{range $index, $field := .Fields}}{{if $index}}And{{end}}{{$field.GoName}}{{end}}(db *sql.DB,
 		{{- range $index, $field := .Fields -}}
-			{{- if $index}}, {{end}}{{$field.GoName}} interface{}
+			{{- if $index}}, {{end}}{{$field.VarName}} interface{}
 		{{- end -}}
 	) ([]*{{$.Message.Name}}, error)
 	{{end}}
