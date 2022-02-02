@@ -10,6 +10,8 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
+//go:generate mockgen -package {{.PackageName}} -self_package {{.GoImportPath}} -source ./{{.GoFilename}} -destination ./{{.MockFilename}} -mock_names {{.Message.Name}}Recorder=Mock{{.Message.Name}}Recorder {{.GoImportPath}} {{.Message.Name}}Recorder
+
 const (
 	{{.Message.VarName}}InsertStmt = `
 		INSERT INTO {{.Message.SQLName}} (
@@ -42,13 +44,20 @@ var (
 
 type {{.Message.Name}}Recorder interface {
 	Get(db *sql.DB, id uint64) (*{{.Message.Name}}, error)
+	List(db *sql.DB, lastID *wrapperspb.UInt64Value, asc bool, limit int64) ([]*{{.Message.Name}}, error)
+	FindByIDs(db *sql.DB, ids []uint64) ([]*{{.Message.Name}}, error)
 	Save(db *sql.DB) error
 	{{range .Message.Indices -}}
 	FindOneBy{{range $index, $field := .Fields}}{{if $index}}And{{end}}{{$field.GoName}}{{end}}(db *sql.DB,
 		{{- range $index, $field := .Fields -}}
-			{{- if $index}}, {{end}}{{$field.GoName}} interface{}
+			{{- if $index}}, {{end}}{{$field.VarName}} interface{}
 		{{- end -}}
 	) (*{{$.Message.Name}}, error)
+	FindBy{{range $index, $field := .Fields}}{{if $index}}And{{end}}{{$field.GoName}}{{end}}(db *sql.DB,
+		{{- range $index, $field := .Fields -}}
+			{{- if $index}}, {{end}}{{$field.VarName}} interface{}
+		{{- end -}}
+	) ([]*{{$.Message.Name}}, error)
 	{{end}}
 }
 

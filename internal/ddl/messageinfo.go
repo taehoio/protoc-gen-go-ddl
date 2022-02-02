@@ -260,8 +260,11 @@ func (mi MessageInfo) supportsMySQL() bool {
 }
 
 type dml struct {
-	PackageName string
-	Message     MessageInfo
+	PackageName  string
+	GoImportPath string
+	GoFilename   string
+	MockFilename string
+	Message      MessageInfo
 }
 
 func getGoPackageName(opts *descriptorpb.FileOptions) string {
@@ -279,7 +282,7 @@ func getGoPackageName(opts *descriptorpb.FileOptions) string {
 	return pkgName
 }
 
-func (mi MessageInfo) GenerateDML() (string, error) {
+func (mi MessageInfo) GenerateDML(goFilename string, mockFilename string) (string, error) {
 	tmpl, err := template.New("dmlMessageTmpl").Parse(dmlMessageTmpl)
 	if err != nil {
 		return "", err
@@ -289,8 +292,11 @@ func (mi MessageInfo) GenerateDML() (string, error) {
 
 	var b bytes.Buffer
 	if err := tmpl.Execute(&b, &dml{
-		PackageName: pkgName,
-		Message:     mi,
+		PackageName:  pkgName,
+		GoImportPath: mi.message.GoIdent.GoImportPath.String(),
+		GoFilename:   goFilename,
+		MockFilename: mockFilename,
+		Message:      mi,
 	}); err != nil {
 		return "", err
 	}
