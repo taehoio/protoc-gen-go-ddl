@@ -153,6 +153,8 @@ tasks:
     deps:
       - install:tools
     cmds:
+      - rm -f ${GOPATH}/bin/protoc-gen-go-ddl
+      - go install
       - rm -f ${GOPATH}/bin/protoc-gen-marshal-input
       - cd cmd/protoc-gen-marshal-input ; go install ; cd -
 
