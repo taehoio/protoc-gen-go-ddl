@@ -140,10 +140,20 @@ func TestMessageInfo_supportsDatastore(t *testing.T) {
 }
 
 func TestMessageInfo_GenerateDDL(t *testing.T) {
-	t.Run("fails due to unsupported datastore", func(t *testing.T) {
+	t.Run("fails due to unspecified datastore", func(t *testing.T) {
 		u, err := ddlUserMessage()
 		assert.NoError(t, err)
 		u.MessageOptions = []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_UNSPECIFIED"}}
+
+		got, err := u.GenerateDDL()
+		assert.ErrorIs(t, err, ErrorDatastoreUnspecified, "GenerateDDL()")
+		assert.Empty(t, got)
+	})
+
+	t.Run("fails due to unsupported datastore", func(t *testing.T) {
+		u, err := ddlUserMessage()
+		assert.NoError(t, err)
+		u.MessageOptions = []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_SQLITE"}}
 
 		got, err := u.GenerateDDL()
 		assert.ErrorIs(t, err, ErrNotSupportedDatastore, "GenerateDDL()")
@@ -342,6 +352,17 @@ func TestMessageInfo_DMLMockFileSuffix(t *testing.T) {
 			mi: MessageInfo{
 				Name:           "User",
 				MessageOptions: []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_UNSPECIFIED"}},
+			},
+			want: "",
+			wantErr: func(t assert.TestingT, err error, msgAndArgs ...interface{}) bool {
+				return assert.ErrorIs(t, err, ErrorDatastoreUnspecified, msgAndArgs...)
+			},
+		},
+		{
+			name: "error with not supported datastore",
+			mi: MessageInfo{
+				Name:           "User",
+				MessageOptions: []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_SQLITE"}},
 			},
 			want: "",
 			wantErr: func(t assert.TestingT, err error, msgAndArgs ...interface{}) bool {

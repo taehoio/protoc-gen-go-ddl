@@ -114,7 +114,7 @@ func NewMessageInfo(message protogen.Message) (*MessageInfo, error) {
 		Uniques:   uniques,
 	}
 
-	if datastore := mi.getDatastoreOption(); datastore != protobufv1.DatastoreType_DATASTORE_TYPE_MONGODB && len(mi.NestedMessages) > 0 {
+	if datastore := mi.getDatastoreOption(); datastore != protobufv1.DatastoreType_DATASTORE_TYPE_UNSPECIFIED && datastore != protobufv1.DatastoreType_DATASTORE_TYPE_MONGODB && len(mi.NestedMessages) > 0 {
 		return nil, fmt.Errorf("nested message in %s datastore is not supported", datastore.String())
 	}
 
@@ -267,7 +267,8 @@ func extractUniques(fields []Field) ([]Unique, error) {
 }
 
 var (
-	ErrNotSupportedDatastore = fmt.Errorf("not supported datastore")
+	ErrorDatastoreUnspecified = fmt.Errorf("datastore unspecified")
+	ErrNotSupportedDatastore  = fmt.Errorf("not supported datastore")
 )
 
 func (mi MessageInfo) GenerateDDL() (string, error) {
@@ -276,6 +277,8 @@ func (mi MessageInfo) GenerateDDL() (string, error) {
 		return mi.generateMySQLDDL()
 	case protobufv1.DatastoreType_DATASTORE_TYPE_MONGODB:
 		return mi.generateMongodbDDL()
+	case protobufv1.DatastoreType_DATASTORE_TYPE_UNSPECIFIED:
+		return "", ErrorDatastoreUnspecified
 	default:
 		return "", ErrNotSupportedDatastore
 	}
@@ -395,6 +398,8 @@ func (mi MessageInfo) DMLMockFileSuffix() (string, error) {
 		return fmt.Sprintf("_dml_%s_mysql_mock.pb.go", strcase.ToSnake(mi.Name)), nil
 	case protobufv1.DatastoreType_DATASTORE_TYPE_MONGODB:
 		return fmt.Sprintf("_dml_%s_mongodb_mock.pb.go", strcase.ToSnake(mi.Name)), nil
+	case protobufv1.DatastoreType_DATASTORE_TYPE_UNSPECIFIED:
+		return "", ErrorDatastoreUnspecified
 	default:
 		return "", ErrNotSupportedDatastore
 	}
