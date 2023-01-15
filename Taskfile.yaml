@@ -1,0 +1,167 @@
+version: '3'
+
+vars:
+  APP: protoc-gen-go-ddl
+
+env:
+  GOPRIVATE: github.com/taehoio
+
+tasks:
+  default:
+    cmds:
+      - task: install:deps
+      - task: install:tools
+
+  install:prereqs:
+    desc: Installs prerequisites
+    cmds:
+      - brew bundle
+    sources:
+      - Brewfile
+    preconditions:
+      - sh: commend -v brew
+        msg: 'Please install Homebrew: https://brew.sh/'
+
+  install:deps:
+    desc: Installs dependencies
+    run: once
+    cmds:
+      - cmd: asdf plugin-add golang
+        ignore_error: true
+      - cmd: asdf plugin add golangci-lint
+        ignore_error: true
+      - asdf install
+      - asdf current
+    sources:
+      - .tool-versions
+
+  install:tools:
+    desc: Installs tools from tools.go
+    run: once
+    cmds:
+      - echo Installing tools from tools.go
+      - cat tools.go | grep _ | awk -F'/' '{print $NF}' | awk -F'"' '{print "which "$1}' | sh $1 | xargs rm -f
+      - cat tools.go | grep _ | awk -F'"' '{print $2}' | xargs -tI % go install %
+    sources:
+      - tools.go
+      - go.mod
+
+  build:
+    desc: Builds the application
+    cmds:
+      - CGO_ENABLED=0 go build -a -installsuffix cgo -ldflags="-w -s" -o bin/{{.APP}} main.go
+
+  build:all:
+    desc: Builds the application for all platforms
+    cmds:
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -ldflags="-w -s" -o bin/{{.APP}}.linux.amd64 main.go
+      - CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -a -installsuffix cgo -ldflags="-w -s" -o bin/{{.APP}}.linux.arm64 main.go
+      - CGO_ENABLED=0 go build -a -installsuffix cgo -ldflags="-w -s" -o bin/{{.APP}} main.go
+
+  run:
+    desc: Runs the application
+    cmds:
+      - go run -v -race main.go
+
+  format:
+    desc: Formats files
+    deps:
+      - format:proto
+      - format:go
+
+  format:proto:
+    desc: Formats proto files
+    deps:
+      - install:tools
+    cmds:
+      - buf format -w
+
+  format:go:
+    desc: Formats go files
+    deps:
+      - install:tools
+    cmds:
+      - find . -not -path './gen/*' -not -path './tools.go' -not -name '*_mock.go' -name '*.go' -print0 | xargs -0 -I {} goimports-reviser -rm-unused -format -company-prefixes github.com/taehoio {}
+      - go mod tidy
+
+  lint:
+    desc: Lints files
+    deps:
+      - lint:proto
+      - lint:go
+
+  lint:proto:
+    desc: Lints proto files
+    deps:
+      - install:tools
+    cmds:
+      - buf lint protos
+
+  lint:go:
+    desc: Lints go files
+    deps:
+      - install:tools
+    cmds:
+      - golangci-lint run ./...
+      - find . -not -path './gen/*' -not -path './tools.go' -not -name '*_mock.go' -name '*.go' -print0 | xargs -0 -I {} goimports-reviser -rm-unused -format -company-prefixes github.com/taehoio -list-diff -set-exit-status {}
+      - go mod verify
+
+  test:
+    desc: Runs tests
+    deps:
+      - install:tools
+    cmds:
+      - task: test:unit
+
+  test:unit:
+    desc: Runs unit tests
+    deps:
+      - install:tools
+    cmds:
+      - gotest -p 1 -race -cover -v ./...
+
+  test:coverage:
+    desc: Runs unit tests with coverage
+    deps:
+      - install:tools
+    cmds:
+      - gotest -p 1 -race -coverprofile=coverage.out -covermode=atomic -v ./...
+
+  test:watch:
+    desc: Watches and runs tests
+    deps:
+      - install:tools
+    cmds:
+      - modd
+
+  generate:
+    desc: Generates files
+    cmds:
+      - task: generate:proto
+      - task: generate:mocks
+
+  generate:proto:
+    desc: Generates proto files
+    deps:
+      - install:tools
+    cmds:
+      - buf generate protos
+
+  generate:mocks:
+    desc: Generates go mocks
+    deps:
+      - install:tools
+    cmds:
+      - go generate ./...
+
+  clean:
+    desc: Cleans up
+    cmds:
+      - rm -rf gen
+      - rm -rf testdata/gen
+
+  diff:
+    desc: Shows diff
+    cmds:
+      - git diff --exit-code
+      - if [ -n "$(git status --porcelain)" ]; then git status; exit 1; else exit 0; fi

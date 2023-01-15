@@ -4,14 +4,13 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/iancoleman/strcase"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	"github.com/iancoleman/strcase"
-
-	protobufv1 "github.com/taehoio/ddl/gen/go/taehoio/ddl/protobuf/v1"
+	protobufv1 "github.com/taehoio/protoc-gen-go-ddl/gen/go/taehoio/ddl/protobuf/v1"
 )
 
 type Field struct {
@@ -19,17 +18,23 @@ type Field struct {
 
 	Options []FieldOption
 
-	TextName string
-	GoName   string
-	VarName  string
-	SQLName  string
+	TextName  string
+	GoName    string
+	VarName   string
+	SQLName   string
+	ParamName string
 
-	PbKind  string
-	PbType  string
-	SQLType string
-	GoType  string
+	PbKind        string
+	PbType        string
+	SQLType       string
+	GoType        string
+	GoValueType   string
+	GoTypeVarName string
 
 	SupportsSQLNullType bool
+	IsWellKnownType     bool
+	IsRepeatedType      bool
+	IsEnumType          bool
 }
 
 type FieldOption struct {
@@ -41,6 +46,9 @@ func NewField(field protogen.Field) (*Field, error) {
 	pbType := ""
 	if field.Desc.Message() != nil {
 		pbType = string(field.Desc.Message().FullName())
+	}
+	if field.Enum != nil {
+		pbType = field.Enum.GoIdent.GoName
 	}
 
 	sqlType, err := kindToSQLType(field)
@@ -58,20 +66,28 @@ func NewField(field protogen.Field) (*Field, error) {
 
 		Options: listFieldOptions(field),
 
-		TextName: field.Desc.TextName(),
-		GoName:   field.GoName,
-		VarName:  strcase.ToLowerCamel(field.GoName),
-		SQLName:  strcase.ToSnake(field.GoName),
+		TextName:  field.Desc.TextName(),
+		GoName:    field.GoName,
+		VarName:   strcase.ToLowerCamel(field.GoName),
+		SQLName:   string(field.Desc.Name()),
+		ParamName: strcase.ToLowerCamel(field.GoName + "Param"),
 
-		PbKind:  field.Desc.Kind().String(),
-		PbType:  pbType,
-		SQLType: sqlType,
-		GoType:  goType,
+		PbKind:        field.Desc.Kind().String(),
+		PbType:        pbType,
+		SQLType:       sqlType,
+		GoType:        goType,
+		GoValueType:   goType,
+		GoTypeVarName: strcase.ToLowerCamel(strings.TrimPrefix(goType, "*")),
 
 		SupportsSQLNullType: false,
+		IsWellKnownType:     isWellKnownFieldType(field.Desc),
+		IsRepeatedType:      field.Desc.IsList(),
+		IsEnumType:          field.Desc.Kind() == protoreflect.EnumKind,
 	}
 
-	if strings.Contains(goType, ".") {
+	f.GoValueType = strings.TrimPrefix(f.GoValueType, "*")
+
+	if strings.HasPrefix(goType, "*") || strings.Contains(goType, ".") {
 		f.SupportsSQLNullType = true
 	}
 
@@ -79,62 +95,146 @@ func NewField(field protogen.Field) (*Field, error) {
 }
 
 func (f Field) ToDDLSQL() string {
-	return fmt.Sprintf("`%s` %s", f.TextName, f.SQLType)
+	return fmt.Sprintf("`%s` %s", f.SQLName, f.SQLType)
 }
 
 func listFieldOptions(f protogen.Field) []FieldOption {
-	var fieldOptions []FieldOption
+	var fieldOpts []FieldOption
 
 	opts := f.Desc.Options().(*descriptorpb.FieldOptions)
 
-	keyOptVal := proto.GetExtension(opts, protobufv1.E_Key).(bool)
-
-	fieldOptions = append(fieldOptions, FieldOption{
-		Name:  string(protobufv1.E_Key.TypeDescriptor().FullName()),
-		Value: fmt.Sprintf("%v", keyOptVal),
-	})
-
-	indexOptVal := proto.GetExtension(opts, protobufv1.E_Index).([]string)
-	for _, v := range indexOptVal {
-		fieldOptions = append(fieldOptions, FieldOption{
-			Name:  string(protobufv1.E_Index.TypeDescriptor().FullName()),
-			Value: v,
+	if keyOptVal, ok := proto.GetExtension(opts, protobufv1.E_Key).(bool); ok {
+		fieldOpts = append(fieldOpts, FieldOption{
+			Name:  string(protobufv1.E_Key.TypeDescriptor().FullName()),
+			Value: fmt.Sprintf("%v", keyOptVal),
 		})
 	}
 
-	uniqueOptVal := proto.GetExtension(opts, protobufv1.E_Unique).([]string)
-	for _, v := range uniqueOptVal {
-		fieldOptions = append(fieldOptions, FieldOption{
-			Name:  string(protobufv1.E_Unique.TypeDescriptor().FullName()),
-			Value: v,
+	if indexOptVal, ok := proto.GetExtension(opts, protobufv1.E_Index).([]string); ok {
+		for _, v := range indexOptVal {
+			fieldOpts = append(fieldOpts, FieldOption{
+				Name:  string(protobufv1.E_Index.TypeDescriptor().FullName()),
+				Value: v,
+			})
+		}
+	}
+
+	if uniqueOptVal, ok := proto.GetExtension(opts, protobufv1.E_Unique).([]string); ok {
+		for _, v := range uniqueOptVal {
+			fieldOpts = append(fieldOpts, FieldOption{
+				Name:  string(protobufv1.E_Unique.TypeDescriptor().FullName()),
+				Value: v,
+			})
+		}
+	}
+
+	if typeOptVal, ok := proto.GetExtension(opts, protobufv1.E_Type).(string); ok {
+		fieldOpts = append(fieldOpts, FieldOption{
+			Name:  string(protobufv1.E_Type.TypeDescriptor().FullName()),
+			Value: typeOptVal,
 		})
 	}
 
-	return fieldOptions
+	return fieldOpts
+}
+
+func isOptionalField(f protogen.Field) bool {
+	return f.Desc.HasOptionalKeyword()
+}
+
+func extractTypeNameFromFieldOption(f protogen.Field) (string, bool) {
+	opts := f.Desc.Options().(*descriptorpb.FieldOptions)
+
+	if typeOptVal, ok := proto.GetExtension(opts, protobufv1.E_Type).(string); ok && typeOptVal != "" {
+		typeKVs := strings.Split(typeOptVal, ",")
+		for _, typeKV := range typeKVs {
+			kv := strings.Split(typeKV, "=")
+			if len(kv) != 2 {
+				continue
+			}
+			k := kv[0]
+			v := kv[1]
+			if k == "name" {
+				if isOptionalField(f) {
+					return fmt.Sprintf("%s NULL DEFAULT NULL", v), true
+				}
+				return fmt.Sprintf("%s NOT NULL", v), true
+			}
+		}
+	}
+
+	return "", false
 }
 
 func kindToSQLType(f protogen.Field) (string, error) {
+	if typeName, ok := extractTypeNameFromFieldOption(f); ok {
+		return typeName, nil
+	}
+
 	kind := f.Desc.Kind()
 
 	switch kind {
 	case protoreflect.Int32Kind:
-		return "INT", nil
+		if isOptionalField(f) {
+			return "INT NULL DEFAULT NULL", nil
+		} else {
+			return "INT NOT NULL", nil
+		}
 	case protoreflect.Int64Kind:
-		return "BIGINT", nil
+		if isOptionalField(f) {
+			return "BIGINT NULL DEFAULT NULL", nil
+		} else {
+			return "BIGINT NOT NULL", nil
+		}
 	case protoreflect.Uint32Kind:
-		return "INT UNSIGNED", nil
+		if isOptionalField(f) {
+			return "INT UNSIGNED NULL DEFAULT NULL", nil
+		} else {
+			return "INT UNSIGNED NOT NULL", nil
+		}
 	case protoreflect.Uint64Kind:
-		return "BIGINT UNSIGNED", nil
+		if isOptionalField(f) {
+			return "BIGINT UNSIGNED NULL DEFAULT NULL", nil
+		} else {
+			return "BIGINT UNSIGNED NOT NULL", nil
+		}
 	case protoreflect.FloatKind:
-		return "FLOAT", nil
+		if isOptionalField(f) {
+			return "FLOAT NULL DEFAULT NULL", nil
+		} else {
+			return "FLOAT NOT NULL", nil
+		}
 	case protoreflect.DoubleKind:
-		return "DOUBLE", nil
+		if isOptionalField(f) {
+			return "DOUBLE NULL DEFAULT NULL", nil
+		} else {
+			return "DOUBLE NOT NULL", nil
+		}
 	case protoreflect.StringKind:
-		return fmt.Sprintf("VARCHAR(%d)", defaultVarcharLength), nil
+		if isOptionalField(f) {
+			return fmt.Sprintf("VARCHAR(%d) NULL DEFAULT NULL", defaultVarcharLength), nil
+		} else {
+			return fmt.Sprintf("VARCHAR(%d) NOT NULL", defaultVarcharLength), nil
+		}
 	case protoreflect.BoolKind:
-		return "BOOLEAN", nil
+		if isOptionalField(f) {
+			return "BOOLEAN NULL DEFAULT NULL", nil
+		} else {
+			return "BOOLEAN NOT NULL", nil
+		}
 	case protoreflect.EnumKind:
-		return "INT", nil
+		if isOptionalField(f) {
+			return "INT NULL DEFAULT NULL", nil
+		} else {
+			return "INT NOT NULL", nil
+		}
+	case protoreflect.BytesKind:
+		if isOptionalField(f) {
+			return "BLOB NULL DEFAULT NULL", nil
+		} else {
+			return "BLOB NOT NULL", nil
+		}
+
 	case protoreflect.MessageKind:
 		return messageKindToSQLType(f)
 	default:
@@ -150,25 +250,15 @@ func messageKindToSQLType(f protogen.Field) (string, error) {
 	name := f.Desc.Message().FullName()
 	switch name {
 	case "google.protobuf.Timestamp":
-		return "TIMESTAMP(6) NULL DEFAULT NULL", nil
-	case "google.protobuf.StringValue":
-		return fmt.Sprintf("VARCHAR(%d)", defaultVarcharLength), nil
-	case "google.protobuf.Int32Value":
-		return "INT", nil
-	case "google.protobuf.Int64Value":
-		return "BIGINT", nil
-	case "google.protobuf.UInt32Value":
-		return "INT UNSIGNED", nil
-	case "google.protobuf.UInt64Value":
-		return "BIGINT UNSIGNED", nil
-	case "google.protobuf.FloatValue":
-		return "FLOAT", nil
-	case "google.protobuf.DoubleValue":
-		return "DOUBLE", nil
-	case "google.protobuf.BoolValue":
-		return "BOOLEAN", nil
-	case "google.protobuf.BytesValue":
-		return "BLOB", nil
+		if isOptionalField(f) {
+			return "TIMESTAMP(6) NULL DEFAULT NULL", nil
+		}
+		return "TIMESTAMP(6) NOT NULL", nil
+	case "google.type.Date":
+		if isOptionalField(f) {
+			return "DATE NULL DEFAULT NULL", nil
+		}
+		return "DATE NOT NULL", nil
 	default:
 		return "JSONB", nil
 	}
@@ -179,23 +269,65 @@ func kindToGoType(f protogen.Field) (string, error) {
 
 	switch kind {
 	case protoreflect.Int32Kind:
+		if isOptionalField(f) {
+			return "*int32", nil
+		}
 		return "int32", nil
 	case protoreflect.Int64Kind:
-		return "int64", nil
+		if isOptionalField(f) {
+			return "*int64", nil
+		} else {
+			return "int64", nil
+		}
 	case protoreflect.Uint32Kind:
-		return "uint32", nil
+		if isOptionalField(f) {
+			return "*uint32", nil
+		} else {
+			return "uint32", nil
+		}
 	case protoreflect.Uint64Kind:
-		return "uint64", nil
+		if isOptionalField(f) {
+			return "*uint64", nil
+		} else {
+			return "uint64", nil
+		}
 	case protoreflect.FloatKind:
-		return "float32", nil
+		if isOptionalField(f) {
+			return "*float32", nil
+		} else {
+			return "float32", nil
+		}
 	case protoreflect.DoubleKind:
-		return "float64", nil
+		if isOptionalField(f) {
+			return "*float64", nil
+		} else {
+			return "float64", nil
+		}
 	case protoreflect.StringKind:
-		return "string", nil
+		if isOptionalField(f) {
+			return "*string", nil
+		} else {
+			return "string", nil
+		}
 	case protoreflect.BoolKind:
-		return "bool", nil
+		if isOptionalField(f) {
+			return "*bool", nil
+		} else {
+			return "bool", nil
+		}
+	case protoreflect.BytesKind:
+		if isOptionalField(f) {
+			return "*[]byte", nil
+		} else {
+			return "[]byte", nil
+		}
+
 	case protoreflect.EnumKind:
-		return "int", nil
+		if isOptionalField(f) {
+			return "*" + f.Enum.GoIdent.GoName, nil
+		} else {
+			return f.Enum.GoIdent.GoName, nil
+		}
 	case protoreflect.MessageKind:
 		return messageKindToGoType(f)
 	default:
@@ -211,10 +343,24 @@ func messageKindToGoType(f protogen.Field) (string, error) {
 	name := f.Desc.Message().FullName()
 	switch name {
 	case "google.protobuf.Timestamp":
-		return "sql.NullTime", nil
-	case "google.protobuf.StringValue":
-		return "sql.NullString", nil
+		if isOptionalField(f) {
+			return "sql.NullTime", nil
+		}
+		return "time.Time", nil
+	case "google.type.Date":
+		return "*date.Date", nil
 	default:
-		return "", fmt.Errorf("not supported message %s", f.Desc.Message().FullName())
+		if isOptionalField(f) {
+			return "*" + f.Message.GoIdent.GoName, nil
+		}
+		return f.Message.GoIdent.GoName, nil
 	}
+}
+
+func isWellKnownFieldType(field protoreflect.FieldDescriptor) bool {
+	if field.Kind() != protoreflect.MessageKind {
+		return true
+	}
+
+	return field.Message().FullName().Parent() == "google.protobuf"
 }

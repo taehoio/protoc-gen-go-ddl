@@ -1,0 +1,12 @@
+version: v1
+plugins:
+  - name: go
+    out: gen/go
+    opt:
+      - paths=source_relative
+  - name: go-ddl
+    out: gen/go
+    opt:
+      - paths=source_relative
+  - name: marshal-input
+    out: ./

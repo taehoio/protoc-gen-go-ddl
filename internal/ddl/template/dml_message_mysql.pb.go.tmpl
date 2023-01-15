@@ -1,0 +1,1189 @@
+package {{.PackageName}}
+
+import (
+	"context"
+	"database/sql"
+	"strings"
+
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+//go:generate mockgen -package {{.PackageName}} -self_package {{.GoImportPath}} -source ./{{.GoFilename}} -destination ./{{.MockFilename}} -mock_names {{.Message.Name}}Recorder=Mock{{.Message.Name}}Recorder {{.GoImportPath}} {{.Message.Name}}Recorder
+
+const (
+	{{.Message.VarName}}InsertStmt = "INSERT INTO `{{.Message.SQLName}}` " + `(
+			{{range $index, $field := .Message.Fields}}
+				{{- if $index}}, {{end}}{{$field.SQLName}}
+			{{- end}}
+		) VALUES (
+			{{range $index, $field := .Message.Fields}}
+				{{- if $index}}, {{end}}?
+			{{- end}}
+		)
+	`
+
+	{{.Message.VarName}}UpdateStmt = "UPDATE `{{.Message.SQLName}}` SET" + `
+			{{range $index, $field := .Message.Fields}}
+				{{- if $index}}, {{end}}{{$field.SQLName}} = ?
+			{{- end}}
+		WHERE
+			{{range $index, $field := .Message.KeyFields}}
+				{{- if $index}} AND {{end}}{{$field.SQLName}} = ?
+			{{- end}}
+	`
+
+	{{.Message.VarName}}DeleteStmt = "UPDATE `{{.Message.SQLName}}` SET" + `
+            deleted_at = ?
+        WHERE
+            id = ?
+    `
+)
+
+var (
+	_ = timestamppb.Timestamp{}
+)
+
+type {{.Message.Name}}Recorder interface {
+	Get(ctx context.Context, db *sql.DB, id int64) (*{{.Message.Name}}, error)
+	List(ctx context.Context, db *sql.DB, paginationOpts ...PaginationOption) ([]*{{.Message.Name}}, error)
+	FindByIDs(ctx context.Context, db *sql.DB, ids []int64) ([]*{{.Message.Name}}, error)
+	Save(ctx context.Context, db *sql.DB, message *{{$.Message.Name}}) error
+	SaveTx(ctx context.Context, tx *sql.Tx, message *{{$.Message.Name}}) error
+	Delete(ctx context.Context, db *sql.DB, id int64) error
+	DeleteTx(ctx context.Context, tx *sql.Tx, id int64) error
+	{{range .Message.Indices -}}
+	FindOneBy{{range $index, $field := .Fields}}{{if $index}}And{{end}}{{$field.GoName}}{{end}}(ctx context.Context, db *sql.DB,
+		{{- range $index, $field := .Fields -}}
+			{{- if or (eq $field.GoType "sql.NullTime") (eq $field.GoType "time.Time") }}
+				{{- if $index}}, {{end -}}
+				{{$field.VarName}}StartTime interface{}, {{$field.VarName}}EndTime interface{}
+			{{- else -}}
+				{{- if $index}}, {{end -}}
+				{{$field.VarName}} interface{}
+			{{- end -}}
+		{{- end -}}
+	) (*{{$.Message.Name}}, error)
+	FindBy{{range $index, $field := .Fields}}{{if $index}}And{{end}}{{$field.GoName}}{{end}}(ctx context.Context, db *sql.DB,
+		{{- range $index, $field := .Fields -}}
+			{{- if or (eq $field.GoType "sql.NullTime") (eq $field.GoType "time.Time") }}
+				{{- if $index}}, {{end -}}
+				{{$field.VarName}}StartTime interface{}, {{$field.VarName}}EndTime interface{}
+			{{- else -}}
+				{{- if $index}}, {{end -}}
+				{{$field.VarName}} interface{}
+			{{- end -}}
+		{{- end -}}
+	, paginationOpts ...PaginationOption) ([]*{{$.Message.Name}}, error)
+	DeleteBy{{range $index, $field := .Fields}}{{if $index}}And{{end}}{{$field.GoName}}{{end}}(ctx context.Context, db *sql.DB,
+		{{- range $index, $field := .Fields -}}
+			{{- if or (eq $field.GoType "sql.NullTime") (eq $field.GoType "time.Time") }}
+				{{- if $index}}, {{end -}}
+				{{$field.VarName}}StartTime interface{}, {{$field.VarName}}EndTime interface{}
+			{{- else -}}
+				{{- if $index}}, {{end -}}
+				{{$field.VarName}} interface{}
+			{{- end -}}
+		{{- end -}}
+	) error
+	{{end}}
+}
+
+func (m *{{.Message.Name}}) Get(ctx context.Context, db *sql.DB, id int64) (*{{.Message.Name}}, error) {
+	stmt, err := db.PrepareContext(ctx, "SELECT " +
+        "{{range $index, $field := .Message.Fields}}
+            {{- if $index}}, {{end}}{{$field.SQLName}}
+        {{- end}}" +
+        " FROM `{{.Message.SQLName}}` WHERE id = ? AND deleted_at IS NULL LIMIT 1")
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	var mm {{.Message.Name}}
+
+	{{range $index, $field := .Message.Fields}}
+		{{- if $field.SupportsSQLNullType}}
+			{{- if $field.GoType | eq "time.Time"}}
+				var {{$field.VarName}} sql.NullTime
+			{{- else if $field.GoType | eq "sql.NullTime"}}
+				var {{$field.VarName}} sql.NullTime
+			{{- else if $field.GoType | eq "*date.Date"}}
+            	var {{$field.VarName}} sql.NullString
+			{{- else if $field.GoType | eq "*string"}}
+				var {{$field.VarName}} sql.NullString
+			{{- else if $field.GoType | eq "*int64"}}
+				var {{$field.VarName}} sql.NullInt64
+			{{- else if $field.GoType | eq "*float64"}}
+				var {{$field.VarName}} sql.NullFloat64
+			{{- else if $field.IsEnumType }}
+				var {{$field.VarName}} sql.NullInt32
+			{{- else}}
+				var {{$field.VarName}} {{$field.GoValueType}}
+			{{- end}}
+		{{- end}}
+	{{- end}}
+
+	if err = stmt.QueryRowContext(ctx, id).Scan(
+		{{- range $index, $field := .Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				&{{$field.VarName}},
+			{{- else}}
+				&mm.{{$field.GoName}},
+			{{- end}}
+		{{- end}}
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	{{range $index, $field := .Message.Fields}}
+		{{- if $field.SupportsSQLNullType}}
+			if {{$field.VarName}}.Valid {
+				{{- if eq $field.GoType "time.Time"}}
+					mm.{{$field.GoName}} = timestamppb.New({{$field.VarName}}.Time)
+				{{- else if eq $field.GoType "sql.NullTime"}}
+					mm.{{$field.GoName}} = timestamppb.New({{$field.VarName}}.Time)
+				{{- else if eq $field.GoType "*date.Date"}}
+				    {{$field.VarName}}Ptr, err := mysqlStringToDatePtr({{$field.VarName}}.String)
+                    if err != nil {
+                        return nil, err
+                    }
+                    mm.{{$field.GoName}} = {{$field.VarName}}Ptr
+				{{- else if eq $field.GoType "*string"}}
+					mm.{{$field.GoName}} = stringPtr({{$field.VarName}}.String)
+				{{- else if eq $field.GoType "*int64"}}
+					mm.{{$field.GoName}} = int64Ptr({{$field.VarName}}.Int64)
+				{{- else if eq $field.GoType "*float64"}}
+					mm.{{$field.GoName}} = float64Ptr({{$field.VarName}}.Float64)
+				{{- else if $field.IsEnumType }}
+					mm.{{$field.GoName}} = {{$field.PbType}}({{$field.VarName}}.Int32).Enum()
+				{{- end}}
+			}
+		{{- end}}
+	{{- end}}
+
+	return &mm, nil
+}
+
+func (m *{{.Message.Name}}) List(ctx context.Context, db *sql.DB, paginationOpts ...PaginationOption) ([]*{{.Message.Name}}, error) {
+	q := "SELECT " +
+        "{{range $index, $field := .Message.Fields}}
+            {{- if $index}}, {{end}}{{$field.SQLName}}
+        {{- end}}" +
+        " FROM `{{.Message.SQLName}}` WHERE deleted_at IS NULL"
+
+	var opt pagination
+	for _, o := range paginationOpts {
+		o(&opt)
+	}
+	if opt.LastID != nil {
+		switch opt.Order {
+		case OrderAscending:
+			q += " AND id > ?"
+		case OrderDescending:
+			q += " AND id < ?"
+		}
+	}
+	switch opt.Order {
+	case OrderAscending:
+		q += " ORDER BY id ASC"
+	case OrderDescending:
+		q += " ORDER BY id DESC"
+	}
+	if opt.Limit != nil {
+		q += " LIMIT ?"
+	}
+
+	stmt, err := db.PrepareContext(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	var args []interface{}
+	if opt.LastID != nil {
+		args = append(args, opt.LastID)
+	}
+	if opt.Limit != nil {
+		args = append(args, *opt.Limit)
+	}
+
+	rows, err := stmt.QueryContext(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var arr []*{{.Message.Name}}
+
+	for rows.Next() {
+		var mm {{.Message.Name}}
+
+		{{range $index, $field := .Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				{{- if $field.GoType | eq "time.Time"}}
+					var {{$field.VarName}} sql.NullTime
+				{{- else if $field.GoType | eq "sql.NullTime"}}
+					var {{$field.VarName}} sql.NullTime
+				{{- else if $field.GoType | eq "*date.Date"}}
+                    var {{$field.VarName}} sql.NullString
+				{{- else if $field.GoType | eq "*string"}}
+					var {{$field.VarName}} sql.NullString
+				{{- else if $field.GoType | eq "*int64"}}
+					var {{$field.VarName}} sql.NullInt64
+				{{- else if $field.GoType | eq "*float64"}}
+					var {{$field.VarName}} sql.NullFloat64
+				{{- else if $field.IsEnumType }}
+					var {{$field.VarName}} sql.NullInt32
+				{{- else}}
+					var {{$field.VarName}} {{$field.GoValueType}}
+				{{- end}}
+			{{- end}}
+		{{- end}}
+
+		if err = rows.Scan(
+			{{- range $index, $field := .Message.Fields}}
+				{{- if $field.SupportsSQLNullType}}
+					&{{$field.VarName}},
+				{{- else}}
+					&mm.{{$field.GoName}},
+				{{- end}}
+			{{- end}}
+		); err != nil {
+			return nil, err
+		}
+
+		{{range $index, $field := .Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				if {{$field.VarName}}.Valid {
+					{{- if eq $field.GoType "time.Time"}}
+						mm.{{$field.GoName}} = timestamppb.New({{$field.VarName}}.Time)
+					{{- else if eq $field.GoType "sql.NullTime"}}
+						mm.{{$field.GoName}} = timestamppb.New({{$field.VarName}}.Time)
+					{{- else if eq $field.GoType "*date.Date"}}
+                        {{$field.VarName}}Ptr, err := mysqlStringToDatePtr({{$field.VarName}}.String)
+                        if err != nil {
+                            return nil, err
+                        }
+                        mm.{{$field.GoName}} = {{$field.VarName}}Ptr
+					{{- else if eq $field.GoType "*string"}}
+						mm.{{$field.GoName}} = stringPtr({{$field.VarName}}.String)
+					{{- else if eq $field.GoType "*int64"}}
+						mm.{{$field.GoName}} = int64Ptr({{$field.VarName}}.Int64)
+					{{- else if eq $field.GoType "*float64"}}
+						mm.{{$field.GoName}} = float64Ptr({{$field.VarName}}.Float64)
+					{{- else if $field.IsEnumType }}
+						mm.{{$field.GoName}} = {{$field.PbType}}({{$field.VarName}}.Int32).Enum()
+					{{- end}}
+				}
+			{{- end}}
+		{{- end}}
+
+		arr = append(arr, &mm)
+	}
+
+	return arr, nil
+}
+
+func (m *{{.Message.Name}}) FindByIDs(ctx context.Context, db *sql.DB, ids []int64) ([]*{{.Message.Name}}, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	q := "SELECT " +
+        "{{range $index, $field := .Message.Fields}}
+            {{- if $index}}, {{end}}{{$field.SQLName}}
+        {{- end}}" +
+        " FROM `{{.Message.SQLName}}` WHERE deleted_at IS NULL AND id IN ("
+	for i := range ids {
+		if i > 0 {
+			q += ", "
+		}
+		q += "?"
+	}
+	q += ")"
+
+	stmt, err := db.PrepareContext(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	var args []interface{}
+	for _, id := range ids {
+		args = append(args, id)
+	}
+
+	rows, err := stmt.QueryContext(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var arr []*{{.Message.Name}}
+
+	for rows.Next() {
+		var mm {{.Message.Name}}
+
+		{{range $index, $field := .Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				{{- if $field.GoType | eq "time.Time"}}
+					var {{$field.VarName}} sql.NullTime
+				{{- else if $field.GoType | eq "sql.NullTime"}}
+					var {{$field.VarName}} sql.NullTime
+				{{- else if $field.GoType | eq "*date.Date"}}
+                    var {{$field.VarName}} sql.NullString
+				{{- else if $field.GoType | eq "*string"}}
+					var {{$field.VarName}} sql.NullString
+				{{- else if $field.GoType | eq "*int64"}}
+					var {{$field.VarName}} sql.NullInt64
+				{{- else if $field.GoType | eq "*float64"}}
+					var {{$field.VarName}} sql.NullFloat64
+				{{- else if $field.IsEnumType }}
+					var {{$field.VarName}} sql.NullInt32
+				{{- else}}
+					var {{$field.VarName}} {{$field.GoValueType}}
+				{{- end}}
+			{{- end}}
+		{{- end}}
+
+		if err = rows.Scan(
+			{{- range $index, $field := .Message.Fields}}
+				{{- if $field.SupportsSQLNullType}}
+					&{{$field.VarName}},
+				{{- else}}
+					&mm.{{$field.GoName}},
+				{{- end}}
+			{{- end}}
+		); err != nil {
+			return nil, err
+		}
+
+		{{range $index, $field := .Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				if {{$field.VarName}}.Valid {
+					{{- if eq $field.GoType "time.Time"}}
+						mm.{{$field.GoName}} = timestamppb.New({{$field.VarName}}.Time)
+					{{- else if eq $field.GoType "sql.NullTime"}}
+						mm.{{$field.GoName}} = timestamppb.New({{$field.VarName}}.Time)
+					{{- else if eq $field.GoType "*date.Date"}}
+                        {{$field.VarName}}Ptr, err := mysqlStringToDatePtr({{$field.VarName}}.String)
+                        if err != nil {
+                            return nil, err
+                        }
+                        mm.{{$field.GoName}} = {{$field.VarName}}Ptr
+					{{- else if eq $field.GoType "*string"}}
+						mm.{{$field.GoName}} = stringPtr({{$field.VarName}}.String)
+					{{- else if eq $field.GoType "*int64"}}
+						mm.{{$field.GoName}} = int64Ptr({{$field.VarName}}.Int64)
+					{{- else if eq $field.GoType "*float64"}}
+						mm.{{$field.GoName}} = float64Ptr({{$field.VarName}}.Float64)
+					{{- else if $field.IsEnumType }}
+						mm.{{$field.GoName}} = {{$field.PbType}}({{$field.VarName}}.Int32).Enum()
+					{{- end}}
+				}
+			{{- end}}
+		{{- end}}
+
+		arr = append(arr, &mm)
+	}
+
+	return arr, nil
+}
+
+{{range .Message.Indices}}
+func (m *{{$.Message.Name}}) FindOneBy{{range $index, $field := .Fields}}{{if $index}}And{{end}}{{$field.GoName}}{{end}}(ctx context.Context, db *sql.DB,
+	{{- range $index, $field := .Fields}}
+		{{- if or (eq $field.GoType "sql.NullTime") (eq $field.GoType "time.Time") }}
+			{{- if $index}}, {{end -}}
+			{{$field.ParamName}}StartTime interface{}, {{$field.ParamName}}EndTime interface{}
+		{{- else -}}
+			{{- if $index}}, {{end -}}
+			{{$field.ParamName}} interface{}
+		{{- end -}}
+	{{- end}}) (*{{$.Message.Name}}, error) {
+	stmt, err := db.PrepareContext(ctx, "SELECT " +
+        "{{range $index, $field := $.Message.Fields}}
+            {{- if $index}}, {{end}}{{$field.SQLName}}
+        {{- end}}" +
+        " FROM `{{$.Message.SQLName}}` WHERE deleted_at IS NULL
+	{{- range $index, $field := .Fields -}}
+		{{if or (eq $field.GoType "sql.NullTime") (eq $field.GoType "time.Time") }} AND {{$field.SQLName}}>=? AND {{$field.SQLName}}<=?
+		{{- else}} AND {{$field.SQLName}}=?
+		{{- end -}}
+	{{- end}} LIMIT 1")
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	var mm {{$.Message.Name}}
+
+	{{range $index, $field := $.Message.Fields}}
+		{{- if $field.SupportsSQLNullType}}
+			{{- if $field.GoType | eq "time.Time"}}
+				var {{$field.VarName}} sql.NullTime
+			{{- else if $field.GoType | eq "sql.NullTime"}}
+				var {{$field.VarName}} sql.NullTime
+			{{- else if $field.GoType | eq "*date.Date"}}
+                var {{$field.VarName}} sql.NullString
+			{{- else if $field.GoType | eq "*string"}}
+				var {{$field.VarName}} sql.NullString
+			{{- else if $field.GoType | eq "*int64"}}
+				var {{$field.VarName}} sql.NullInt64
+			{{- else if $field.GoType | eq "*float64"}}
+				var {{$field.VarName}} sql.NullFloat64
+			{{- else if $field.IsEnumType }}
+				var {{$field.VarName}} sql.NullInt32
+			{{- else}}
+				var {{$field.VarName}} {{$field.GoValueType}}
+			{{- end}}
+		{{- end}}
+	{{- end}}
+
+	if err = stmt.QueryRowContext(
+		ctx,
+		{{- range $index, $field := .Fields}}
+			{{- if or (eq $field.GoType "sql.NullTime") (eq $field.GoType "time.Time") }}
+				{{$field.ParamName}}StartTime,
+				{{$field.ParamName}}EndTime,
+			{{- else -}}
+				{{$field.ParamName}},
+			{{- end -}}
+		{{end}}
+		).Scan(
+		{{- range $index, $field := $.Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				&{{$field.VarName}},
+			{{- else}}
+				&mm.{{$field.GoName}},
+			{{- end}}
+		{{- end}}
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	{{range $index, $field := $.Message.Fields}}
+		{{- if $field.SupportsSQLNullType}}
+			if {{$field.VarName}}.Valid {
+				{{- if eq $field.GoType "time.Time"}}
+					mm.{{$field.GoName}} = timestamppb.New({{$field.VarName}}.Time)
+				{{- else if eq $field.GoType "sql.NullTime"}}
+					mm.{{$field.GoName}} = timestamppb.New({{$field.VarName}}.Time)
+				{{- else if eq $field.GoType "*date.Date"}}
+                    {{$field.VarName}}Ptr, err := mysqlStringToDatePtr({{$field.VarName}}.String)
+                    if err != nil {
+                        return nil, err
+                    }
+                    mm.{{$field.GoName}} = {{$field.VarName}}Ptr
+				{{- else if eq $field.GoType "*string"}}
+					mm.{{$field.GoName}} = stringPtr({{$field.VarName}}.String)
+				{{- else if eq $field.GoType "*int64"}}
+					mm.{{$field.GoName}} = int64Ptr({{$field.VarName}}.Int64)
+				{{- else if eq $field.GoType "*float64"}}
+					mm.{{$field.GoName}} = float64Ptr({{$field.VarName}}.Float64)
+				{{- else if $field.IsEnumType }}
+					mm.{{$field.GoName}} = {{$field.PbType}}({{$field.VarName}}.Int32).Enum()
+				{{- end}}
+			}
+		{{- end}}
+	{{end}}
+
+	return &mm, nil
+}
+
+func (m *{{$.Message.Name}}) FindBy{{range $index, $field := .Fields}}{{if $index}}And{{end}}{{$field.GoName}}{{end}}(ctx context.Context, db *sql.DB,
+	{{- range $index, $field := .Fields}}
+		{{- if or (eq $field.GoType "sql.NullTime") (eq $field.GoType "time.Time") }}
+			{{- if $index}}, {{end -}}
+			{{$field.ParamName}}StartTime interface{}, {{$field.ParamName}}EndTime interface{}
+		{{- else -}}
+			{{- if $index}}, {{end -}}
+			{{$field.ParamName}} interface{}
+		{{- end -}}
+	{{- end -}}
+	, paginationOpts ...PaginationOption) ([]*{{$.Message.Name}}, error) {
+	q := "SELECT " +
+         "{{range $index, $field := $.Message.Fields}}
+             {{- if $index}}, {{end}}{{$field.SQLName}}
+         {{- end}}" +
+         " FROM `{{$.Message.SQLName}}` WHERE deleted_at IS NULL
+    {{- range $index, $field := .Fields -}}
+        {{if or (eq $field.GoType "sql.NullTime") (eq $field.GoType "time.Time")}} AND {{$field.SQLName}}>=? AND {{$field.SQLName}}<=?
+        {{- else}} AND {{$field.SQLName}}=?
+        {{- end -}}
+    {{- end}}"
+
+    var opt pagination
+    for _, o := range paginationOpts {
+        o(&opt)
+    }
+    if opt.LastID != nil {
+        switch opt.Order {
+        case OrderAscending:
+            q += " AND id > ?"
+        case OrderDescending:
+            q += " AND id < ?"
+        }
+    }
+    switch opt.Order {
+    case OrderAscending:
+        q += " ORDER BY id ASC"
+    case OrderDescending:
+        q += " ORDER BY id DESC"
+    }
+    if opt.Limit != nil {
+        q += " LIMIT ?"
+    }
+
+	stmt, err := db.PrepareContext(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	args := []interface{}{
+		{{- range $index, $field := .Fields}}
+      {{if or (eq $field.GoType "sql.NullTime") (eq $field.GoType "time.Time") -}}
+          {{$field.ParamName}}StartTime,
+          {{$field.ParamName}}EndTime,
+      {{- else -}}
+          {{$field.ParamName}},
+      {{- end -}}
+    {{end}}
+	}
+	if opt.LastID != nil {
+		args = append(args, opt.LastID)
+	}
+	if opt.Limit != nil {
+		args = append(args, *opt.Limit)
+	}
+
+	rows, err := stmt.QueryContext(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var arr []*{{$.Message.Name}}
+
+	for rows.Next() {
+		var mm {{$.Message.Name}}
+
+		{{range $index, $field := $.Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				{{- if $field.GoType | eq "time.Time"}}
+					var {{$field.VarName}} sql.NullTime
+				{{- else if $field.GoType | eq "sql.NullTime"}}
+					var {{$field.VarName}} sql.NullTime
+				{{- else if $field.GoType | eq "*date.Date"}}
+                    var {{$field.VarName}} sql.NullString
+				{{- else if $field.GoType | eq "*string"}}
+					var {{$field.VarName}} sql.NullString
+				{{- else if $field.GoType | eq "*int64"}}
+					var {{$field.VarName}} sql.NullInt64
+				{{- else if $field.GoType | eq "*float64"}}
+					var {{$field.VarName}} sql.NullFloat64
+				{{- else if $field.IsEnumType }}
+					var {{$field.VarName}} sql.NullInt32
+				{{- else}}
+					var {{$field.VarName}} {{$field.GoValueType}}
+				{{- end}}
+			{{- end}}
+		{{- end}}
+
+		if err = rows.Scan(
+			{{- range $index, $field := $.Message.Fields}}
+				{{- if $field.SupportsSQLNullType}}
+					&{{$field.VarName}},
+				{{- else}}
+					&mm.{{$field.GoName}},
+				{{- end}}
+			{{- end}}
+		); err != nil {
+			if err == sql.ErrNoRows {
+				return nil, ErrNotFound
+			}
+			return nil, err
+		}
+
+		{{range $index, $field := $.Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				if {{$field.VarName}}.Valid {
+					{{- if eq $field.GoType "time.Time"}}
+						mm.{{$field.GoName}} = timestamppb.New({{$field.VarName}}.Time)
+					{{- else if eq $field.GoType "sql.NullTime"}}
+						mm.{{$field.GoName}} = timestamppb.New({{$field.VarName}}.Time)
+					{{- else if eq $field.GoType "*date.Date"}}
+                        {{$field.VarName}}Ptr, err := mysqlStringToDatePtr({{$field.VarName}}.String)
+                        if err != nil {
+                            return nil, err
+                        }
+                        mm.{{$field.GoName}} = {{$field.VarName}}Ptr
+					{{- else if eq $field.GoType "*string"}}
+						mm.{{$field.GoName}} = stringPtr({{$field.VarName}}.String)
+					{{- else if eq $field.GoType "*int64"}}
+						mm.{{$field.GoName}} = int64Ptr({{$field.VarName}}.Int64)
+					{{- else if eq $field.GoType "*float64"}}
+						mm.{{$field.GoName}} = float64Ptr({{$field.VarName}}.Float64)
+					{{- else if $field.IsEnumType }}
+						mm.{{$field.GoName}} = {{$field.PbType}}({{$field.VarName}}.Int32).Enum()
+					{{- end}}
+				}
+			{{- end}}
+		{{end}}
+
+		arr = append(arr, &mm)
+	}
+
+	return arr, nil
+}
+
+func (m *{{$.Message.Name}}) DeleteBy{{range $index, $field := .Fields}}{{if $index}}And{{end}}{{$field.GoName}}{{end}}(ctx context.Context, db *sql.DB, 
+	{{- range $index, $field := .Fields}}
+		{{- if or (eq $field.GoType "sql.NullTime") (eq $field.GoType "time.Time") }}
+			{{- if $index}}, {{end -}}
+			{{$field.ParamName}}StartTime interface{}, {{$field.ParamName}}EndTime interface{}
+		{{- else -}}
+			{{- if $index}}, {{end -}}
+			{{$field.ParamName}} interface{}
+		{{- end -}}
+	{{- end -}}) error {
+	currentAt := timestamppb.Now()
+
+	q := "UPDATE `{{$.Message.SQLName}}` SET deleted_at=? WHERE deleted_at IS NULL
+		{{- range $index, $field := .Fields -}}
+			{{if or (eq $field.GoType "sql.NullTime") (eq $field.GoType "time.Time")}} AND {{$field.SQLName}}>=? AND {{$field.SQLName}}<=?
+			{{- else}} AND {{$field.SQLName}}=?
+			{{- end -}}
+		{{- end -}}
+	"
+
+	stmt, err := db.PrepareContext(ctx, q)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	args := []interface{}{
+		currentAt.AsTime(),
+		{{- range $index, $field := .Fields}}
+			{{if or (eq $field.GoType "sql.NullTime") (eq $field.GoType "time.Time") -}}
+				{{$field.ParamName}}StartTime,
+				{{$field.ParamName}}EndTime,
+			{{- else -}}
+				{{$field.ParamName}},
+			{{- end -}}
+		{{end}}
+	}
+
+	if _, err := stmt.ExecContext(
+		ctx,
+		args...,
+	); err != nil {
+		return err
+	}
+
+	return nil
+}
+{{end}}
+
+func (m *{{.Message.Name}}) Save(ctx context.Context, db *sql.DB, message *{{$.Message.Name}}) error {
+	if message.Id == 0 {
+		return ErrIDNotExist
+	}
+
+	shouldInsert := true
+	mm, err := m.Get(ctx, db, message.Id)
+	if err != nil && err != ErrNotFound {
+		return err
+	}
+	if mm != nil {
+		shouldInsert = false
+	}
+
+	if shouldInsert {
+		if err := m.insert(ctx, db, message); err != nil {
+			return err
+		}
+	} else {
+		{{- range $index, $field := $.Message.Fields}}
+			{{- if eq $field.VarName "createdAt"}}
+		message.{{$field.GoName}} = mm.{{$field.GoName}}
+			{{- end}}
+		{{- end}}
+		if err := m.update(ctx, db, message); err != nil {
+			return err
+		}
+	}
+
+	mm, err = m.Get(ctx, db, message.Id)
+	if err != nil {
+		return err
+	}
+
+	proto.Merge(message, mm)
+
+	return nil
+}
+
+func (m *{{.Message.Name}}) insert(ctx context.Context, db *sql.DB, message *{{$.Message.Name}}) error {
+	currentAt := timestamppb.Now()
+
+	{{range $index, $field := $.Message.Fields}}
+		{{if $field.SupportsSQLNullType}}
+			{{if eq $field.VarName "createdAt"}}
+			{{else if eq $field.VarName "updatedAt"}}
+			{{else if eq $field.VarName "deletedAt"}}
+			{{else}}
+				{{- if $field.GoType | eq "time.Time"}}
+					var {{$field.VarName}} sql.NullTime
+				{{- else if $field.GoType | eq "sql.NullTime"}}
+					var {{$field.VarName}} sql.NullTime
+				{{- else if $field.GoType | eq "*date.Date"}}
+				    var {{$field.VarName}} sql.NullString
+				{{- else if $field.GoType | eq "*string"}}
+					var {{$field.VarName}} sql.NullString
+				{{- else if $field.GoType | eq "*int64"}}
+					var {{$field.VarName}} sql.NullInt64
+				{{- else if $field.GoType | eq "*float64"}}
+					var {{$field.VarName}} sql.NullFloat64
+				{{- else if $field.IsEnumType }}
+					var {{$field.VarName}} sql.NullInt32
+				{{- else}}
+					var {{$field.VarName}} {{$field.GoValueType}}
+				{{- end}}
+				if message.{{$field.GoName}} != nil {
+					{{- if or (eq $field.GoType "sql.NullTime") (eq $field.GoType "time.Time")}}
+						if err := {{$field.VarName}}.Scan(message.{{$field.GoName}}.AsTime()); err != nil {
+							return err
+						}
+					{{- else if $field.GoType | eq "*date.Date"}}
+					    {{$field.VarName}}String, err := datePtrToMysqlString(message.{{$field.GoName}})
+                        if err != nil {
+                            return err
+                        }
+                        if err := {{$field.VarName}}.Scan({{$field.VarName}}String); err != nil {
+                            return err
+                        }
+					{{- else}}
+						if err := {{$field.VarName}}.Scan(*message.{{$field.GoName}}); err != nil {
+							return err
+						}
+					{{- end}}
+				}
+			{{end}}
+		{{end}}
+	{{end}}
+
+	_, err := db.ExecContext(
+		ctx,
+		{{.Message.VarName}}InsertStmt,
+		{{- range $index, $field := $.Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				{{- if eq $field.VarName "createdAt"}}
+					currentAt.AsTime(),
+				{{- else if eq $field.VarName "updatedAt"}}
+					currentAt.AsTime(),
+				{{- else if eq $field.VarName "deletedAt"}}
+					nil,
+				{{- else}}
+					{{$field.VarName}},
+				{{- end}}
+			{{- else}}
+				message.{{$field.GoName}},
+			{{- end}}
+		{{- end}}
+	)
+	if err != nil {
+		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+			return ErrDuplicateEntry 
+		}
+		return err
+	}
+
+	return nil
+}
+
+func (m *{{.Message.Name}}) update(ctx context.Context, db *sql.DB, message *{{$.Message.Name}}) error {
+	currentAt := timestamppb.Now()
+
+	{{range $index, $field := $.Message.Fields}}
+		{{if $field.SupportsSQLNullType}}
+			{{if eq $field.VarName "createdAt"}}
+			{{else if eq $field.VarName "updatedAt"}}
+			{{else if eq $field.VarName "deletedAt"}}
+			{{else}}
+				{{- if $field.GoType | eq "time.Time"}}
+					var {{$field.VarName}} sql.NullTime
+				{{- else if $field.GoType | eq "sql.NullTime"}}
+					var {{$field.VarName}} sql.NullTime
+				{{- else if $field.GoType | eq "*date.Date"}}
+                    var {{$field.VarName}} sql.NullString
+				{{- else if $field.GoType | eq "*string"}}
+					var {{$field.VarName}} sql.NullString
+				{{- else if $field.GoType | eq "*int64"}}
+					var {{$field.VarName}} sql.NullInt64
+				{{- else if $field.GoType | eq "*float64"}}
+					var {{$field.VarName}} sql.NullFloat64
+				{{- else if $field.IsEnumType }}
+					var {{$field.VarName}} sql.NullInt32
+				{{- else}}
+					var {{$field.VarName}} {{$field.GoValueType}}
+				{{- end}}
+				if message.{{$field.GoName}} != nil {
+					{{- if or (eq $field.GoType "sql.NullTime") (eq $field.GoType "time.Time")}}
+						if err := {{$field.VarName}}.Scan(message.{{$field.GoName}}.AsTime()); err != nil {
+							return err
+						}
+					{{- else if $field.GoType | eq "*date.Date"}}
+                        {{$field.VarName}}String, err := datePtrToMysqlString(message.{{$field.GoName}})
+                        if err != nil {
+                            return err
+                        }
+                        if err := {{$field.VarName}}.Scan({{$field.VarName}}String); err != nil {
+                            return err
+                        }
+					{{- else}}
+						if err := {{$field.VarName}}.Scan(*message.{{$field.GoName}}); err != nil {
+							return err
+						}
+					{{- end}}
+				}
+			{{end}}
+		{{end}}
+	{{end}}
+
+	_, err := db.ExecContext(
+		ctx,
+		{{.Message.VarName}}UpdateStmt,
+		{{- range $index, $field := $.Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				{{- if eq $field.VarName "createdAt"}}
+					message.{{$field.GoName}}.AsTime(),
+				{{- else if eq $field.VarName "updatedAt"}}
+					currentAt.AsTime(),
+				{{- else if eq $field.VarName "deletedAt"}}
+					nil,
+				{{- else}}
+					{{$field.VarName}},
+				{{- end}}
+			{{- else}}
+				message.{{$field.GoName}},
+			{{- end}}
+		{{- end}}
+		{{- range $index, $field := .Message.KeyFields}}
+			message.{{$field.GoName}},
+		{{- end}}
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m *{{.Message.Name}}) Delete(ctx context.Context, db *sql.DB, id int64) error {
+    currentAt := timestamppb.Now()
+
+    _, err := db.ExecContext(
+			ctx,
+			{{.Message.VarName}}DeleteStmt,
+			currentAt.AsTime(),
+			id,
+    )
+    if err != nil {
+        return err
+    }
+
+    return nil
+}
+
+func (m *{{.Message.Name}}) DeleteTx(ctx context.Context, tx *sql.Tx, id int64) error {
+    currentAt := timestamppb.Now()
+
+    _, err := tx.ExecContext(
+			ctx,
+			{{.Message.VarName}}DeleteStmt,
+			currentAt.AsTime(),
+			id,
+    )
+    if err != nil {
+        return err
+    }
+
+    return nil
+}
+
+func (m *{{.Message.Name}}) SaveTx(ctx context.Context, tx *sql.Tx, message *{{$.Message.Name}}) error {
+	if message.Id == 0 {
+		return ErrIDNotExist
+	}
+
+	shouldInsert := true
+	mm, err := m.getTx(ctx, tx, message.Id)
+	if err != nil && err != ErrNotFound {
+		return err
+	}
+	if mm != nil {
+		shouldInsert = false
+	}
+
+	if shouldInsert {
+		if err := m.insertTx(ctx, tx, message); err != nil {
+			return err
+		}
+	} else {
+		{{- range $index, $field := $.Message.Fields}}
+			{{- if eq $field.VarName "createdAt"}}
+		message.{{$field.GoName}} = mm.{{$field.GoName}}
+			{{- end}}
+		{{- end}}
+		if err := m.updateTx(ctx, tx, message); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m *{{.Message.Name}}) insertTx(ctx context.Context, tx *sql.Tx, message *{{$.Message.Name}}) error {
+	currentAt := timestamppb.Now()
+
+	{{range $index, $field := $.Message.Fields}}
+		{{if $field.SupportsSQLNullType}}
+			{{if eq $field.VarName "createdAt"}}
+			{{else if eq $field.VarName "updatedAt"}}
+			{{else if eq $field.VarName "deletedAt"}}
+			{{else}}
+				{{- if $field.GoType | eq "time.Time"}}
+					var {{$field.VarName}} sql.NullTime
+				{{- else if $field.GoType | eq "sql.NullTime"}}
+					var {{$field.VarName}} sql.NullTime
+				{{- else if $field.GoType | eq "*date.Date"}}
+                    var {{$field.VarName}} sql.NullString
+				{{- else if $field.GoType | eq "*string"}}
+					var {{$field.VarName}} sql.NullString
+				{{- else if $field.GoType | eq "*int64"}}
+					var {{$field.VarName}} sql.NullInt64
+				{{- else if $field.GoType | eq "*float64"}}
+					var {{$field.VarName}} sql.NullFloat64
+				{{- else if $field.IsEnumType }}
+					var {{$field.VarName}} sql.NullInt32
+				{{- else}}
+					var {{$field.VarName}} {{$field.GoValueType}}
+				{{- end}}
+				if message.{{$field.GoName}} != nil {
+					{{- if or (eq $field.GoType "sql.NullTime") (eq $field.GoType "time.Time")}}
+						if err := {{$field.VarName}}.Scan(message.{{$field.GoName}}.AsTime()); err != nil {
+							return err
+						}
+					{{- else if $field.GoType | eq "*date.Date"}}
+                        {{$field.VarName}}String, err := datePtrToMysqlString(message.{{$field.GoName}})
+                        if err != nil {
+                            return err
+                        }
+                        if err := {{$field.VarName}}.Scan({{$field.VarName}}String); err != nil {
+                            return err
+                        }
+					{{- else}}
+						if err := {{$field.VarName}}.Scan(*message.{{$field.GoName}}); err != nil {
+							return err
+						}
+					{{- end}}
+				}
+			{{end}}
+		{{end}}
+	{{end}}
+
+	_, err := tx.ExecContext(
+		ctx,
+		{{.Message.VarName}}InsertStmt,
+		{{- range $index, $field := $.Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				{{- if eq $field.VarName "createdAt"}}
+					currentAt.AsTime(),
+				{{- else if eq $field.VarName "updatedAt"}}
+					currentAt.AsTime(),
+				{{- else if eq $field.VarName "deletedAt"}}
+					nil,
+				{{- else}}
+					{{$field.VarName}},
+				{{- end}}
+			{{- else}}
+				message.{{$field.GoName}},
+			{{- end}}
+		{{- end}}
+	)
+	if err != nil {
+		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+			return ErrDuplicateEntry
+		}
+		return err
+	}
+
+	return nil
+}
+
+func (m *{{.Message.Name}}) updateTx(ctx context.Context, tx *sql.Tx, message *{{$.Message.Name}}) error {
+	currentAt := timestamppb.Now()
+
+	{{range $index, $field := $.Message.Fields}}
+		{{if $field.SupportsSQLNullType}}
+			{{if eq $field.VarName "createdAt"}}
+			{{else if eq $field.VarName "updatedAt"}}
+			{{else if eq $field.VarName "deletedAt"}}
+			{{else}}
+				{{- if $field.GoType | eq "time.Time"}}
+					var {{$field.VarName}} sql.NullTime
+				{{- else if $field.GoType | eq "sql.NullTime"}}
+					var {{$field.VarName}} sql.NullTime
+				{{- else if $field.GoType | eq "*date.Date"}}
+                    var {{$field.VarName}} sql.NullString
+				{{- else if $field.GoType | eq "*string"}}
+					var {{$field.VarName}} sql.NullString
+				{{- else if $field.GoType | eq "*int64"}}
+					var {{$field.VarName}} sql.NullInt64
+				{{- else if $field.GoType | eq "*float64"}}
+					var {{$field.VarName}} sql.NullFloat64
+				{{- else if $field.IsEnumType }}
+					var {{$field.VarName}} sql.NullInt32
+				{{- else}}
+					var {{$field.VarName}} {{$field.GoValueType}}
+				{{- end}}
+				if message.{{$field.GoName}} != nil {
+					{{- if or (eq $field.GoType "sql.NullTime") (eq $field.GoType "time.Time")}}
+						if err := {{$field.VarName}}.Scan(message.{{$field.GoName}}.AsTime()); err != nil {
+							return err
+						}
+					{{- else if $field.GoType | eq "*date.Date"}}
+                        {{$field.VarName}}String, err := datePtrToMysqlString(message.{{$field.GoName}})
+                        if err != nil {
+                            return err
+                        }
+                        if err := {{$field.VarName}}.Scan({{$field.VarName}}String); err != nil {
+                            return err
+                        }
+					{{- else}}
+						if err := {{$field.VarName}}.Scan(*message.{{$field.GoName}}); err != nil {
+							return err
+						}
+					{{- end}}
+				}
+			{{end}}
+		{{end}}
+	{{end}}
+
+	_, err := tx.ExecContext(
+		ctx,
+		{{.Message.VarName}}UpdateStmt,
+		{{- range $index, $field := $.Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				{{- if eq $field.VarName "createdAt"}}
+					message.{{$field.GoName}}.AsTime(),
+				{{- else if eq $field.VarName "updatedAt"}}
+					currentAt.AsTime(),
+				{{- else if eq $field.VarName "deletedAt"}}
+					nil,
+				{{- else}}
+					{{$field.VarName}},
+				{{- end}}
+			{{- else}}
+				message.{{$field.GoName}},
+			{{- end}}
+		{{- end}}
+		{{- range $index, $field := .Message.KeyFields}}
+			message.{{$field.GoName}},
+		{{- end}}
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m *{{.Message.Name}}) getTx(ctx context.Context, tx *sql.Tx, id int64) (*{{.Message.Name}}, error) {
+	stmt, err := tx.PrepareContext(ctx, "SELECT " +
+        "{{range $index, $field := .Message.Fields}}
+            {{- if $index}}, {{end}}{{$field.SQLName}}
+        {{- end}}" +
+        " FROM `{{.Message.SQLName}}` WHERE id = ? AND deleted_at IS NULL")
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	var mm {{.Message.Name}}
+
+	{{range $index, $field := .Message.Fields}}
+		{{- if $field.SupportsSQLNullType}}
+			{{- if $field.GoType | eq "time.Time"}}
+				var {{$field.VarName}} sql.NullTime
+			{{- else if $field.GoType | eq "sql.NullTime"}}
+				var {{$field.VarName}} sql.NullTime
+			{{- else if $field.GoType | eq "*date.Date"}}
+                var {{$field.VarName}} sql.NullString
+			{{- else if $field.GoType | eq "*string"}}
+				var {{$field.VarName}} sql.NullString
+			{{- else if $field.GoType | eq "*int64"}}
+				var {{$field.VarName}} sql.NullInt64
+			{{- else if $field.GoType | eq "*float64"}}
+				var {{$field.VarName}} sql.NullFloat64
+			{{- else if $field.IsEnumType }}
+				var {{$field.VarName}} sql.NullInt32
+			{{- else}}
+				var {{$field.VarName}} {{$field.GoValueType}}
+			{{- end}}
+		{{- end}}
+	{{- end}}
+
+	if err = stmt.QueryRowContext(ctx, id).Scan(
+		{{- range $index, $field := .Message.Fields}}
+			{{- if $field.SupportsSQLNullType}}
+				&{{$field.VarName}},
+			{{- else}}
+				&mm.{{$field.GoName}},
+			{{- end}}
+		{{- end}}
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	{{range $index, $field := .Message.Fields}}
+		{{- if $field.SupportsSQLNullType}}
+			if {{$field.VarName}}.Valid {
+				{{- if eq $field.GoType "time.Time"}}
+					mm.{{$field.GoName}} = timestamppb.New({{$field.VarName}}.Time)
+				{{- else if eq $field.GoType "sql.NullTime"}}
+					mm.{{$field.GoName}} = timestamppb.New({{$field.VarName}}.Time)
+				{{- else if eq $field.GoType "*date.Date"}}
+                    {{$field.VarName}}Ptr, err := mysqlStringToDatePtr({{$field.VarName}}.String)
+                    if err != nil {
+                        return nil, err
+                    }
+                    mm.{{$field.GoName}} = {{$field.VarName}}Ptr
+				{{- else if eq $field.GoType "*string"}}
+					mm.{{$field.GoName}} = stringPtr({{$field.VarName}}.String)
+				{{- else if eq $field.GoType "*int64"}}
+					mm.{{$field.GoName}} = int64Ptr({{$field.VarName}}.Int64)
+				{{- else if eq $field.GoType "*float64"}}
+					mm.{{$field.GoName}} = float64Ptr({{$field.VarName}}.Float64)
+				{{- else if $field.IsEnumType }}
+					mm.{{$field.GoName}} = {{$field.PbType}}({{$field.VarName}}.Int32).Enum()
+				{{- end}}
+			}
+		{{- end}}
+	{{- end}}
+
+	return &mm, nil
+}

@@ -1,0 +1,456 @@
+package {{ .PackageName }}
+
+import (
+	"context"
+	"errors"
+	"strconv"
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+//go:generate mockgen -package {{ .PackageName }} -self_package {{ .GoImportPath }} -source ./{{ .GoFilename }} -destination ./{{ .MockFilename }} -mock_names {{ .Message.Name }}Recorder=Mock{{ .Message.Name }}Recorder {{ .GoImportPath }} {{ .Message.Name }}Recorder
+
+const (
+	{{ .Message.VarName }}CollectionName = "{{ .Message.SQLName }}"
+)
+
+var (
+	_ strconv.NumError
+	_ time.Time
+	_ bson.M
+	_ primitive.DateTime
+	_ proto.Message
+	_ timestamppb.Timestamp
+)
+
+type {{ .Message.Name }}Recorder interface {
+	Get(ctx context.Context, db *mongo.Database, id string) (*{{ .Message.Name }}, error)
+	List(ctx context.Context, db *mongo.Database) ([]*{{ .Message.Name }}, error)
+	FindByIDs(ctx context.Context, db *mongo.Database, ids []string) ([]*{{ .Message.Name }}, error)
+	Save(ctx context.Context, db *mongo.Database, message *{{ .Message.Name }}) error
+	Delete(ctx context.Context, db *mongo.Database, id string) error
+	{{- range .Message.Indices }}
+	{{- if and (eq (len .Fields) 1) (eq (index .Fields 0).TextName "deleted_at")}} {{ continue }} {{ end }}
+	FindOneBy{{ range $index, $field := .Fields }}{{ if $index }}And{{ end }}{{ $field.GoName }}{{ end }}(ctx context.Context, db *mongo.Database
+		{{- range $index, $field := .Fields -}}
+			{{- if eq $field.PbType "google.protobuf.Timestamp" -}}
+				{{- if eq $field.TextName "deleted_at"}} {{ continue }} {{ end -}}
+				, {{ $field.VarName }}StartTime *time.Time, {{ $field.VarName }}EndTime *time.Time
+			{{- else -}}
+				, {{ $field.VarName }} {{ $field.GoType -}}
+			{{- end -}}
+		{{- end -}}
+	) (*{{ $.Message.Name }}, error)
+	FindBy{{ range $index, $field := .Fields }}{{ if $index }}And{{ end }}{{ $field.GoName }}{{ end }}(ctx context.Context, db *mongo.Database
+		{{- range $index, $field := .Fields -}}
+			{{- if eq $field.PbType "google.protobuf.Timestamp" -}}
+				{{- if eq $field.TextName "deleted_at"}} {{ continue }} {{ end -}}
+				, {{ $field.VarName }}StartTime *time.Time, {{ $field.VarName }}EndTime *time.Time
+			{{- else -}}
+				, {{ $field.VarName }} {{ $field.GoType -}}
+			{{- end -}}
+		{{- end -}}
+	) ([]*{{ $.Message.Name }}, error)
+	{{- end }}
+}
+
+var _ {{ .Message.Name }}Recorder = (*{{ .Message.Name }})(nil)
+
+func (m *{{ .Message.Name }}) Get(ctx context.Context, db *mongo.Database, id string) (*{{ .Message.Name }}, error) {
+	coll := db.Collection({{ .Message.VarName }}CollectionName)
+	return m.get(ctx, coll, id)
+}
+
+func (m *{{ .Message.Name }}) List(ctx context.Context, db *mongo.Database) ([]*{{ .Message.Name }}, error) {
+	coll := db.Collection({{ .Message.VarName }}CollectionName)
+
+	cursor, err := coll.Find(ctx, bson.D{{"{{"}}"deleted_at", nil}})
+	if err != nil {
+		return nil, err
+	}
+
+	var docs []*{{ .Message.VarName }}Document
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, err
+	}
+
+	pb, err := {{ .Message.VarName }}DocumentsToProto(docs)
+	if err != nil {
+		return nil, err
+	}
+
+	return pb, nil
+}
+
+func (m *{{ .Message.Name }}) FindByIDs(ctx context.Context, db *mongo.Database, ids []string) ([]*{{ .Message.Name }}, error) {
+	coll := db.Collection({{ .Message.VarName }}CollectionName)
+
+	filter := bson.D{{"{{"}}"$and", bson.A{
+		bson.D{{"{{"}}Key: "id", Value: bson.D{{"{{"}}Key: "$in", Value: ids}}}},
+		bson.D{{"{{"}}Key: "deleted_at", Value: nil}},
+	}}}
+
+	cursor, err := coll.Find(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	var docs []*{{ .Message.VarName }}Document
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, err
+	}
+
+	pb, err := {{ .Message.VarName }}DocumentsToProto(docs)
+	if err != nil {
+		return nil, err
+	}
+
+	return pb, nil
+}
+
+func (m *{{ .Message.Name }}) Save(ctx context.Context, db *mongo.Database, message *{{ .Message.Name }}) error {
+	if message.Id == "" {
+		return ErrIDNotExist
+	}
+
+	coll := db.Collection({{ .Message.VarName }}CollectionName)
+
+	stored, err := m.get(ctx, coll, message.Id)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return err
+	}
+
+	if stored == nil {
+		if err := m.insert(ctx, coll, message); err != nil {
+			return err
+		}
+	} else {
+		message.CreatedAt = stored.CreatedAt
+		if err := m.update(ctx, coll, message); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m *{{ .Message.Name }}) Delete(ctx context.Context, db *mongo.Database, id string) error {
+	coll := db.Collection({{ .Message.VarName }}CollectionName)
+
+	now := time.Now()
+	filter := bson.D{{"{{"}}Key: "id", Value: id}}
+	value := bson.D{{"{{"}}Key: "$set", Value: bson.D{{"{{"}}
+		Key: "deleted_at",
+		Value: primitive.NewDateTimeFromTime(now)}},
+	}}
+	if _, err := coll.UpdateOne(ctx, filter, value); err != nil {
+		return err
+	}
+	return nil
+}
+
+{{ range .Message.Indices }}
+{{- if and (eq (len .Fields) 1) (eq (index .Fields 0).TextName "deleted_at")}} {{ continue }} {{ end }}
+func (m *{{ $.Message.Name }}) FindOneBy{{ range $index, $field := .Fields }}{{ if $index }}And{{ end }}{{ $field.GoName }}{{ end }}(ctx context.Context, db *mongo.Database
+	{{- range $index, $field := .Fields -}}
+		{{- if eq $field.PbType "google.protobuf.Timestamp" -}}
+			{{- if eq $field.TextName "deleted_at"}} {{ continue }} {{ end -}}
+			, {{ $field.VarName }}StartTime *time.Time, {{ $field.VarName }}EndTime *time.Time
+		{{- else -}}
+			, {{ $field.VarName }} {{ $field.GoType -}}
+		{{- end -}}
+	{{- end -}}
+	) (*{{ $.Message.Name }}, error) {
+	coll := db.Collection({{ $.Message.VarName }}CollectionName)
+
+	var andFilter bson.A
+	{{- range $index, $field := .Fields -}}
+		{{- if eq $field.PbType "google.protobuf.Timestamp" }}
+			{{- if eq $field.TextName "deleted_at"}} {{ continue }} {{ end }}
+			if {{ $field.VarName }}StartTime != nil && {{ $field.VarName }}EndTime != nil {
+				andFilter = append(andFilter, bson.D{{"{{"}}Key: "$and", Value: bson.A{
+					bson.D{{"{{"}}Key: "{{ $field.SQLName }}", Value: bson.D{{"{{"}}Key: "$gte", Value: primitive.NewDateTimeFromTime(*{{ $field.VarName }}StartTime)}}}},
+					bson.D{{"{{"}}Key: "{{ $field.SQLName }}", Value: bson.D{{"{{"}}Key: "$lte", Value: primitive.NewDateTimeFromTime(*{{ $field.VarName }}EndTime)}}}},
+				}}})
+			} else if {{ $field.VarName }}StartTime != nil {
+				andFilter = append(andFilter, bson.D{{"{{"}}Key: "{{ $field.SQLName }}", Value: bson.D{{"{{"}}Key: "$gte", Value: primitive.NewDateTimeFromTime(*{{ $field.VarName }}StartTime)}}}})
+			} else if {{ $field.VarName }}EndTime != nil {
+				andFilter = append(andFilter, bson.D{{"{{"}}Key: "{{ $field.SQLName }}", Value: bson.D{{"{{"}}Key: "$lte", Value: primitive.NewDateTimeFromTime(*{{ $field.VarName }}EndTime)}}}})
+			}
+		{{- else if eq $field.GoType "uint64" }}
+			andFilter = append(andFilter, bson.D{{"{{"}}Key: "{{ $field.SQLName }}", Value: strconv.FormatUint({{ $field.VarName }}, 10)}})
+		{{- else if eq $field.GoType "*uint64" }}
+			if {{ $field.VarName }} != nil {
+				andFilter = append(andFilter, bson.D{{"{{"}}Key: "{{ $field.SQLName }}", Value: strconv.FormatUint(*{{ $field.VarName }}, 10)}})
+			} else {
+				andFilter = append(andFilter, bson.D{{"{{"}}Key: "{{ $field.SQLName }}", Value: nil}})
+			}
+		{{- else }}
+			andFilter = append(andFilter, bson.D{{"{{"}}Key: "{{ $field.SQLName }}", Value: {{ $field.VarName }}}})
+		{{- end }}
+	{{- end }}
+	andFilter = append(andFilter, bson.D{{"{{"}}Key: "deleted_at", Value: nil}})
+
+	var doc {{ $.Message.VarName }}Document
+	if err := coll.FindOne(ctx, bson.D{{"{{"}}Key: "$and", Value: andFilter}}).Decode(&doc); err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	return doc.toProto()
+}
+
+func (m *{{ $.Message.Name }}) FindBy{{ range $index, $field := .Fields }}{{ if $index }}And{{ end }}{{ $field.GoName }}{{ end }}(ctx context.Context, db *mongo.Database
+	{{- range $index, $field := .Fields -}}
+		{{- if eq $field.PbType "google.protobuf.Timestamp" -}}
+			{{- if eq $field.TextName "deleted_at"}} {{ continue }} {{ end -}}
+			, {{ $field.VarName }}StartTime *time.Time, {{ $field.VarName }}EndTime *time.Time
+		{{- else -}}
+			, {{ $field.VarName }} {{ $field.GoType -}}
+		{{- end -}}
+	{{- end -}}
+	) ([]*{{ $.Message.Name }}, error) {
+	coll := db.Collection({{ $.Message.VarName }}CollectionName)
+
+	var andFilter bson.A
+	{{- range $index, $field := .Fields -}}
+		{{- if eq $field.PbType "google.protobuf.Timestamp" }}
+			{{- if eq $field.TextName "deleted_at"}} {{ continue }} {{ end }}
+			if {{ $field.VarName }}StartTime != nil && {{ $field.VarName }}EndTime != nil {
+				andFilter = append(andFilter, bson.D{{"{{"}}Key: "$and", Value: bson.A{
+					bson.D{{"{{"}}Key: "{{ $field.SQLName }}", Value: bson.D{{"{{"}}Key: "$gte", Value: primitive.NewDateTimeFromTime(*{{ $field.VarName }}StartTime)}}}},
+					bson.D{{"{{"}}Key: "{{ $field.SQLName }}", Value: bson.D{{"{{"}}Key: "$lte", Value: primitive.NewDateTimeFromTime(*{{ $field.VarName }}EndTime)}}}},
+				}}})
+			} else if {{ $field.VarName }}StartTime != nil {
+				andFilter = append(andFilter, bson.D{{"{{"}}Key: "{{ $field.SQLName }}", Value: bson.D{{"{{"}}Key: "$gte", Value: primitive.NewDateTimeFromTime(*{{ $field.VarName }}StartTime)}}}})
+			} else if {{ $field.VarName }}EndTime != nil {
+				andFilter = append(andFilter, bson.D{{"{{"}}Key: "{{ $field.SQLName }}", Value: bson.D{{"{{"}}Key: "$lte", Value: primitive.NewDateTimeFromTime(*{{ $field.VarName }}EndTime)}}}})
+			}
+		{{- else if eq $field.GoType "uint64" }}
+			andFilter = append(andFilter, bson.D{{"{{"}}Key: "{{ $field.SQLName }}", Value: strconv.FormatUint({{ $field.VarName }}, 10)}})
+		{{- else if eq $field.GoType "*uint64" }}
+			if {{ $field.VarName }} != nil {
+				andFilter = append(andFilter, bson.D{{"{{"}}Key: "{{ $field.SQLName }}", Value: strconv.FormatUint(*{{ $field.VarName }}, 10)}})
+			} else {
+				andFilter = append(andFilter, bson.D{{"{{"}}Key: "{{ $field.SQLName }}", Value: nil}})
+			}
+		{{- else }}
+			andFilter = append(andFilter, bson.D{{"{{"}}Key: "{{ $field.SQLName }}", Value: {{ $field.VarName }}}})
+		{{- end }}
+	{{- end }}
+	andFilter = append(andFilter, bson.D{{"{{"}}Key: "deleted_at", Value: nil}})
+
+	cursor, err := coll.Find(ctx, bson.D{{"{{"}}Key: "$and", Value: andFilter}})
+	if err != nil {
+		return nil, err
+	}
+
+	var docs []*{{ $.Message.VarName }}Document
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, err
+	}
+
+	return {{ $.Message.VarName }}DocumentsToProto(docs)
+}
+{{ end }}
+
+func (m *{{ .Message.Name }}) get(ctx context.Context, coll *mongo.Collection, id string) (*{{ .Message.Name }}, error) {
+	filter := bson.D{{"{{"}}Key: "$and", Value: bson.A{
+		bson.D{{"{{"}}Key: "id", Value: id}},
+		bson.D{{"{{"}}Key: "deleted_at", Value: nil}},
+	}}}
+
+	var doc {{ .Message.VarName }}Document
+	if err := coll.FindOne(ctx, filter).Decode(&doc); err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	pb, err := doc.toProto()
+	if err != nil {
+		return nil, err
+	}
+
+	return pb, nil
+}
+
+func (m *{{ .Message.Name }}) insert(ctx context.Context, coll *mongo.Collection, message *{{ .Message.Name }}) error {
+	now := timestamppb.Now()
+	if message.CreatedAt == nil {
+		message.CreatedAt = now
+	}
+	message.UpdatedAt = now
+
+	if _, err := coll.InsertOne(ctx, {{ .Message.VarName }}DocumentFromProto(message)); err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return ErrDuplicateEntry
+		}
+		return err
+	}
+
+	return nil
+}
+
+func (m *{{ .Message.Name }}) update(ctx context.Context, coll *mongo.Collection, message *{{ .Message.Name }}) error {
+	message.UpdatedAt = timestamppb.Now()
+
+	filter := bson.D{{"{{"}}Key: "id", Value: message.Id}}
+	value := bson.D{{"{{"}}Key: "$set", Value: {{ .Message.VarName }}DocumentFromProto(message)}}
+	if _, err := coll.UpdateOne(ctx, filter, value); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+
+{{- define "protoDocumentDeclare" }}
+func {{ .VarName }}DocumentsToProto(docs []*{{ .VarName }}Document) ([]*{{ .Name }}, error) {
+	result := make([]*{{ .Name }}, len(docs))
+
+	for i, doc := range docs {
+		pb, err := doc.toProto()
+		if err != nil {
+			return nil, err
+		}
+		result[i] = pb
+	}
+
+	return result, nil
+}
+
+type {{ .VarName }}Document struct {
+{{- range $index, $field := .Fields }}
+	{{- if $field.GoType | eq "time.Time" }}
+		{{ $field.GoName }} {{ if $field.IsRepeatedType }}[]{{ end }}primitive.DateTime `bson:"{{ $field.SQLName }}"`
+	{{- else if $field.GoType | eq "sql.NullTime" }}
+		{{ $field.GoName }} {{ if $field.IsRepeatedType }}[]{{ end }}*primitive.DateTime `bson:"{{ $field.SQLName }}"`
+	{{- else if not $field.IsWellKnownType }}
+		{{ $field.GoName }} {{ if $field.IsRepeatedType }}[]{{ end }}*{{ $field.GoTypeVarName }}Document `bson:"{{ $field.SQLName }}"`
+	{{- else if $field.GoType | eq "uint64" }}
+		{{ $field.GoName }} {{ if $field.IsRepeatedType }}[]{{ end }}string `bson:"{{ $field.SQLName }}"`
+	{{- else if $field.GoType | eq "*uint64" }}
+		{{ $field.GoName }} {{ if $field.IsRepeatedType }}[]{{ end }}*string `bson:"{{ $field.SQLName }}"`
+	{{- else }}
+		{{ $field.GoName }} {{ if $field.IsRepeatedType }}[]{{ end }}{{ $field.GoType }} `bson:"{{ $field.SQLName }}"`
+	{{- end }}
+{{- end }}
+}
+
+func (doc *{{ .VarName }}Document) toProto() (*{{ .Name }}, error) {
+	if doc == nil {
+		return nil, nil
+	}
+
+	result := &{{ .Name }}{
+	{{- range $index, $field := .Fields }}
+		{{- if and (eq $field.PbKind "message") (not $field.IsWellKnownType) }}
+		{{- else if $field.GoType | eq "time.Time"}}
+			{{ $field.GoName }}: timestamppb.New(doc.{{ $field.GoName }}.Time()),
+		{{- else if or ($field.GoType | eq "sql.NullTime") ($field.GoType | eq "uint64") ($field.GoType | eq "*uint64")}}
+		{{- else }}
+			{{ $field.GoName }}: doc.{{ $field.GoName }},
+		{{- end}}
+	{{- end }}
+	}
+
+	{{ range $index, $field := .Fields }}
+		{{- if and (eq $field.PbKind "message") (not $field.IsWellKnownType) }}
+			{{- if $field.IsRepeatedType }}
+				if pb, err := {{ $field.GoTypeVarName }}DocumentsToProto(doc.{{ $field.GoName }}); err != nil {
+					return nil, err
+				} else {
+					result.{{ $field.GoName }} = pb
+				}
+			{{- else }}
+				if pb, err := doc.{{ $field.GoName }}.toProto(); err != nil {
+					return nil, err
+				} else {
+					result.{{ $field.GoName }} = pb
+				}
+			{{- end }}
+		{{- else if $field.GoType | eq "sql.NullTime"}}
+			if doc.{{ $field.GoName }} != nil {
+				result.{{ $field.GoName }} = timestamppb.New(doc.{{ $field.GoName }}.Time())
+			}
+		{{- else if $field.GoType | eq "uint64" }}
+			if u64, err := strconv.ParseUint(doc.{{ $field.GoName }}, 10, 64); err != nil {
+				return nil, err
+			} else {
+				result.{{ $field.GoName }} = u64
+			}
+		{{- else if $field.GoType | eq "*uint64" }}
+			if doc.{{ $field.GoName }} != nil {
+				if u64, err := strconv.ParseUint(*doc.{{ $field.GoName }}, 10, 64); err != nil {
+					return nil, err
+				} else {
+					result.{{ $field.GoName }} = proto.Uint64(u64)
+				}
+			}
+		{{- end }}
+	{{ end }}
+
+	return result, nil
+}
+
+func {{ .VarName }}DocumentFromProto(pb *{{ .Name }}) *{{ .VarName }}Document {
+	if pb == nil {
+		return nil
+	}
+
+	result := &{{ .VarName }}Document{
+		{{- range $index, $field := .Fields }}
+			{{- if $field.GoType | eq "time.Time"}}
+				{{ $field.GoName }}: primitive.NewDateTimeFromTime(pb.{{ $field.GoName }}.AsTime()),
+			{{- else if $field.GoType | eq "uint64"}}
+				{{ $field.GoName }}: strconv.FormatUint(pb.{{ $field.GoName }}, 10),
+			{{- else if not $field.IsWellKnownType }}
+				{{- if or $field.IsRepeatedType $field.SupportsSQLNullType}}
+				{{- else }}
+				{{ $field.GoName }}: {{ $field.GoTypeVarName }}DocumentFromProto(pb.{{ $field.GoName }}),
+				{{- end }}
+			{{- else if or ($field.GoType | eq "sql.NullTime") ($field.GoType | eq "*uint64")}}
+			{{- else }}
+				{{ $field.GoName }}: pb.{{ $field.GoName }},
+			{{- end}}
+		{{- end }}
+	}
+
+	{{ range $index, $field := .Fields }}
+		{{- if $field.GoType | eq "sql.NullTime"}}
+			if pb.{{ $field.GoName }} != nil {
+				{{ $field.VarName }} := primitive.NewDateTimeFromTime(pb.{{ $field.GoName }}.AsTime())
+				result.{{ $field.GoName }} = &{{ $field.VarName }}
+			}
+		{{- else if $field.GoType | eq "*uint64"}}
+			if pb.{{ $field.GoName }} != nil {
+				result.{{ $field.GoName }} = proto.String(strconv.FormatUint(*pb.{{ $field.GoName }}, 10))
+			}
+		{{- else if and (not $field.IsWellKnownType) ($field.SupportsSQLNullType)}}
+			if pb.{{ $field.GoName }} != nil {
+				result.{{ $field.GoName }} = {{ $field.GoTypeVarName }}DocumentFromProto(pb.{{ $field.GoName }})
+			}
+		{{- else if and (not $field.IsWellKnownType) ($field.IsRepeatedType) }}
+			for _, e := range pb.{{ $field.GoName }} {
+				result.{{ $field.GoName }} = append(result.{{ $field.GoName }}, {{ $field.GoTypeVarName }}DocumentFromProto(e))
+			}
+		{{- end }}
+	{{ end }}
+
+	return result
+}
+{{- end }} {{/* define "protoDocumentDeclare" */}}
+
+{{ template "protoDocumentDeclare" .Message }}
+{{- range .Message.NestedMessages }}
+{{ template "protoDocumentDeclare" . }}
+{{- end }}
