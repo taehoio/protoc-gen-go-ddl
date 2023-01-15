@@ -24,7 +24,7 @@ func TestListMessageOptions(t *testing.T) {
 	opts, err := listMessageOptions(*u)
 	assert.NoError(t, err)
 	assert.Len(t, opts, 1)
-	assert.Equal(t, MessageOption{Name: "daangn.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"}, opts[0])
+	assert.Equal(t, MessageOption{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"}, opts[0])
 }
 
 func TestExtractFields(t *testing.T) {
@@ -33,7 +33,7 @@ func TestExtractFields(t *testing.T) {
 
 	fields, err := extractFields(*u)
 	assert.NoError(t, err)
-	assert.Len(t, fields, 10)
+	assert.Len(t, fields, 11)
 }
 
 func TestExtractKeyFields(t *testing.T) {
@@ -69,6 +69,7 @@ func TestGenerateMySQLDDLSQL(t *testing.T) {
 		"	`profile_json` TEXT NOT NULL,",
 		"	`birth_date` DATE NOT NULL,",
 		"	`death_date` DATE NULL DEFAULT NULL,",
+		"	`phone_number_e164` VARCHAR(255) NOT NULL,",
 		"	PRIMARY KEY (`id`)",
 		");",
 		"",
@@ -78,7 +79,7 @@ func TestGenerateMySQLDDLSQL(t *testing.T) {
 
 	u, err := ddlUserMessage()
 	assert.NoError(t, err)
-	u.MessageOptions = []MessageOption{{Name: "daangn.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"}}
+	u.MessageOptions = []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"}}
 
 	s, err := u.generateMySQLDDL()
 	assert.NoError(t, err)
@@ -99,7 +100,7 @@ func TestMessageInfo_supportsDatastore(t *testing.T) {
 			name: "test mysql datastore",
 			messageInfo: MessageInfo{
 				MessageOptions: []MessageOption{
-					{Name: "daangn.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"},
+					{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"},
 				},
 			},
 			args: args{
@@ -121,7 +122,7 @@ func TestMessageInfo_supportsDatastore(t *testing.T) {
 			name: "test postgres datastore",
 			messageInfo: MessageInfo{
 				MessageOptions: []MessageOption{
-					{Name: "daangn.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_POSTGRESQL"},
+					{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_POSTGRESQL"},
 				},
 			},
 			args: args{
@@ -142,7 +143,7 @@ func TestMessageInfo_GenerateDDL(t *testing.T) {
 	t.Run("fails due to unspecified datastore", func(t *testing.T) {
 		u, err := ddlUserMessage()
 		assert.NoError(t, err)
-		u.MessageOptions = []MessageOption{{Name: "daangn.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_UNSPECIFIED"}}
+		u.MessageOptions = []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_UNSPECIFIED"}}
 
 		got, err := u.GenerateDDL()
 		assert.ErrorIs(t, err, ErrorDatastoreUnspecified, "GenerateDDL()")
@@ -152,7 +153,7 @@ func TestMessageInfo_GenerateDDL(t *testing.T) {
 	t.Run("fails due to unsupported datastore", func(t *testing.T) {
 		u, err := ddlUserMessage()
 		assert.NoError(t, err)
-		u.MessageOptions = []MessageOption{{Name: "daangn.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_SQLITE"}}
+		u.MessageOptions = []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_SQLITE"}}
 
 		got, err := u.GenerateDDL()
 		assert.ErrorIs(t, err, ErrNotSupportedDatastore, "GenerateDDL()")
@@ -174,6 +175,7 @@ func TestMessageInfo_GenerateDDL(t *testing.T) {
 			"	`profile_json` TEXT NOT NULL,",
 			"	`birth_date` DATE NOT NULL,",
 			"	`death_date` DATE NULL DEFAULT NULL,",
+			"	`phone_number_e164` VARCHAR(255) NOT NULL,",
 			"	PRIMARY KEY (`id`)",
 			");",
 			"",
@@ -183,7 +185,7 @@ func TestMessageInfo_GenerateDDL(t *testing.T) {
 
 		u, err := ddlUserMessage()
 		assert.NoError(t, err)
-		u.MessageOptions = []MessageOption{{Name: "daangn.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"}}
+		u.MessageOptions = []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"}}
 
 		s, err := u.GenerateDDL()
 		assert.NoError(t, err)
@@ -200,7 +202,7 @@ func TestMessageInfo_getDatastoreOption(t *testing.T) {
 		{
 			name: "message option with mysql",
 			messageInfo: MessageInfo{
-				MessageOptions: []MessageOption{{Name: "daangn.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"}},
+				MessageOptions: []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"}},
 			},
 			want: protobufv1.DatastoreType_DATASTORE_TYPE_MYSQL,
 		},
@@ -214,7 +216,7 @@ func TestMessageInfo_getDatastoreOption(t *testing.T) {
 		{
 			name: "with unknown data store",
 			messageInfo: MessageInfo{
-				MessageOptions: []MessageOption{{Name: "daangn.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_UNKNOWN"}},
+				MessageOptions: []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_UNKNOWN"}},
 			},
 			want: protobufv1.DatastoreType_DATASTORE_TYPE_UNSPECIFIED,
 		},
@@ -238,7 +240,7 @@ func TestMessageInfo_DDLFileSuffix(t *testing.T) {
 			name: "success with mysql",
 			mi: MessageInfo{
 				Name:           "user",
-				MessageOptions: []MessageOption{{Name: "daangn.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"}},
+				MessageOptions: []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"}},
 			},
 			want: "_ddl_user_mysql.pb.sql",
 			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
@@ -250,7 +252,7 @@ func TestMessageInfo_DDLFileSuffix(t *testing.T) {
 			name: "error with unspecified",
 			mi: MessageInfo{
 				Name:           "user",
-				MessageOptions: []MessageOption{{Name: "daangn.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_UNSPECIFIED"}},
+				MessageOptions: []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_UNSPECIFIED"}},
 			},
 			want: "",
 			wantErr: func(t assert.TestingT, err error, msgAndArgs ...interface{}) bool {
@@ -279,7 +281,7 @@ func TestMessageInfo_generateMongodbDDL(t *testing.T) {
 
 	u, err := ddlUserMessage()
 	assert.NoError(t, err)
-	u.MessageOptions = []MessageOption{{Name: "daangn.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MONGODB"}}
+	u.MessageOptions = []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MONGODB"}}
 
 	s, err := u.generateMongodbDDL()
 	assert.NoError(t, err)
@@ -297,7 +299,7 @@ func TestMessageInfo_DMLFileSuffix(t *testing.T) {
 			name: "success with mysql datastore",
 			mi: MessageInfo{
 				Name:           "User",
-				MessageOptions: []MessageOption{{Name: "daangn.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"}},
+				MessageOptions: []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"}},
 			},
 			want: "_dml_user_mysql.pb.go",
 			wantErr: func(t assert.TestingT, err error, msgAndArgs ...interface{}) bool {
@@ -308,7 +310,7 @@ func TestMessageInfo_DMLFileSuffix(t *testing.T) {
 			name: "error with unspecified datastore",
 			mi: MessageInfo{
 				Name:           "User",
-				MessageOptions: []MessageOption{{Name: "daangn.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_UNSPECIFIED"}},
+				MessageOptions: []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_UNSPECIFIED"}},
 			},
 			want: "",
 			wantErr: func(t assert.TestingT, err error, msgAndArgs ...interface{}) bool {
@@ -338,7 +340,7 @@ func TestMessageInfo_DMLMockFileSuffix(t *testing.T) {
 			name: "success with mysql datastore",
 			mi: MessageInfo{
 				Name:           "User",
-				MessageOptions: []MessageOption{{Name: "daangn.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"}},
+				MessageOptions: []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_MYSQL"}},
 			},
 			want: "_dml_user_mysql_mock.pb.go",
 			wantErr: func(t assert.TestingT, err error, msgAndArgs ...interface{}) bool {
@@ -349,7 +351,7 @@ func TestMessageInfo_DMLMockFileSuffix(t *testing.T) {
 			name: "error with unspecified datastore",
 			mi: MessageInfo{
 				Name:           "User",
-				MessageOptions: []MessageOption{{Name: "daangn.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_UNSPECIFIED"}},
+				MessageOptions: []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_UNSPECIFIED"}},
 			},
 			want: "",
 			wantErr: func(t assert.TestingT, err error, msgAndArgs ...interface{}) bool {
@@ -360,7 +362,7 @@ func TestMessageInfo_DMLMockFileSuffix(t *testing.T) {
 			name: "error with not supported datastore",
 			mi: MessageInfo{
 				Name:           "User",
-				MessageOptions: []MessageOption{{Name: "daangn.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_SQLITE"}},
+				MessageOptions: []MessageOption{{Name: "taehoio.ddl.protobuf.v1.datastore_type", Value: "DATASTORE_TYPE_SQLITE"}},
 			},
 			want: "",
 			wantErr: func(t assert.TestingT, err error, msgAndArgs ...interface{}) bool {
