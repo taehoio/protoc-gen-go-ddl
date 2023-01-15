@@ -16,7 +16,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
-          go-version-file: 'go.mod'
+          go-version-file: "go.mod"
           cache: true
 
       - name: Install Task
@@ -40,7 +40,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
-          go-version-file: 'go.mod'
+          go-version-file: "go.mod"
           cache: true
 
       - name: Install Task
@@ -50,6 +50,7 @@ jobs:
 
       - name: Test
         run: |
+          export PATH=$PATH:$(go env GOPATH)/bin
           task test
 
   generate:
@@ -64,7 +65,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
-          go-version-file: 'go.mod'
+          go-version-file: "go.mod"
           cache: true
 
       - name: Install Task
@@ -73,4 +74,5 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - run: |
+          export PATH=$PATH:$(go env GOPATH)/bin
           task clean && task generate && task diff
