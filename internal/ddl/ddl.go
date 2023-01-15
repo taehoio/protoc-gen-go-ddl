@@ -21,6 +21,48 @@ var (
 	dmlPackagePaginationTmpl string
 )
 
+func generateNecessaryDMLFiles(
+	gen *protogen.Plugin,
+	version string,
+	goPackageName string,
+	sourceFile *protogen.File,
+	goPackageVisited map[string]struct{},
+) error {
+	if _, ok := goPackageVisited[goPackageName]; !ok {
+		generatedFilenamePrefix := filepath.Join(filepath.Dir(sourceFile.GeneratedFilenamePrefix), goPackageName)
+
+		dmlPackageFileSuffix := "_dml.pb.go"
+		generatedDMLPackageFile := gen.NewGeneratedFile(generatedFilenamePrefix+dmlPackageFileSuffix, sourceFile.GoImportPath)
+		addFileHead(version, generatedDMLPackageFile, gen, nil, "//")
+		generatedDMLPackage, err := generateDMLPackage(goPackageName)
+		if err != nil {
+			return err
+		}
+		generatedDMLPackageFile.P(generatedDMLPackage)
+
+		dmlPackageMysqlFileSuffix := "_dml_mysql.pb.go"
+		generatedDMLPackageMysqlFile := gen.NewGeneratedFile(generatedFilenamePrefix+dmlPackageMysqlFileSuffix, sourceFile.GoImportPath)
+		addFileHead(version, generatedDMLPackageMysqlFile, gen, nil, "//")
+		generatedDMLPackageMysql, err := generateDMLPackageMysql(goPackageName)
+		if err != nil {
+			return err
+		}
+		generatedDMLPackageMysqlFile.P(generatedDMLPackageMysql)
+
+		dmlPackagePaginationFileSuffix := "_dml_pagination.pb.go"
+		generatedDMLPackagePaginationFile := gen.NewGeneratedFile(generatedFilenamePrefix+dmlPackagePaginationFileSuffix, sourceFile.GoImportPath)
+		addFileHead(version, generatedDMLPackagePaginationFile, gen, nil, "//")
+		generatedDMLPackagePagination, err := generateDMLPackagePagination(goPackageName)
+		if err != nil {
+			return err
+		}
+		generatedDMLPackagePaginationFile.P(generatedDMLPackagePagination)
+	}
+	goPackageVisited[goPackageName] = struct{}{}
+
+	return nil
+}
+
 func GenerateDDLFiles(version string, gen *protogen.Plugin) error {
 	var (
 		goPackageVisited = make(map[string]struct{})
@@ -32,37 +74,6 @@ func GenerateDDLFiles(version string, gen *protogen.Plugin) error {
 		}
 
 		goPackageName := getGoPackageName(sourceFile.Proto.Options)
-		if _, ok := goPackageVisited[goPackageName]; !ok {
-			generatedFilenamePrefix := filepath.Join(filepath.Dir(sourceFile.GeneratedFilenamePrefix), goPackageName)
-
-			dmlPackageFileSuffix := "_dml.pb.go"
-			generatedDMLPackageFile := gen.NewGeneratedFile(generatedFilenamePrefix+dmlPackageFileSuffix, sourceFile.GoImportPath)
-			addFileHead(version, generatedDMLPackageFile, gen, nil, "//")
-			generatedDMLPackage, err := generateDMLPackage(goPackageName)
-			if err != nil {
-				return err
-			}
-			generatedDMLPackageFile.P(generatedDMLPackage)
-
-			dmlPackageMysqlFileSuffix := "_dml_mysql.pb.go"
-			generatedDMLPackageMysqlFile := gen.NewGeneratedFile(generatedFilenamePrefix+dmlPackageMysqlFileSuffix, sourceFile.GoImportPath)
-			addFileHead(version, generatedDMLPackageMysqlFile, gen, nil, "//")
-			generatedDMLPackageMysql, err := generateDMLPackageMysql(goPackageName)
-			if err != nil {
-				return err
-			}
-			generatedDMLPackageMysqlFile.P(generatedDMLPackageMysql)
-
-			dmlPackagePaginationFileSuffix := "_dml_pagination.pb.go"
-			generatedDMLPackagePaginationFile := gen.NewGeneratedFile(generatedFilenamePrefix+dmlPackagePaginationFileSuffix, sourceFile.GoImportPath)
-			addFileHead(version, generatedDMLPackagePaginationFile, gen, nil, "//")
-			generatedDMLPackagePagination, err := generateDMLPackagePagination(goPackageName)
-			if err != nil {
-				return err
-			}
-			generatedDMLPackagePaginationFile.P(generatedDMLPackagePagination)
-		}
-		goPackageVisited[goPackageName] = struct{}{}
 
 		for _, message := range sourceFile.Messages {
 			mi, err := NewMessageInfo(*message)
@@ -71,7 +82,11 @@ func GenerateDDLFiles(version string, gen *protogen.Plugin) error {
 			}
 
 			ddlFileSuffix, err := mi.DDLFileSuffix()
-			if err != nil {
+			if err == ErrorDatastoreUnspecified || err == ErrNotSupportedDatastore {
+				continue
+			}
+
+			if err := generateNecessaryDMLFiles(gen, version, goPackageName, sourceFile, goPackageVisited); err != nil {
 				return err
 			}
 
@@ -84,7 +99,7 @@ func GenerateDDLFiles(version string, gen *protogen.Plugin) error {
 			}
 
 			stmts, err := mi.GenerateDDL()
-			if err == ErrNotSupportedDatastore {
+			if err == ErrorDatastoreUnspecified || err == ErrNotSupportedDatastore {
 				continue
 			}
 			if err != nil {
