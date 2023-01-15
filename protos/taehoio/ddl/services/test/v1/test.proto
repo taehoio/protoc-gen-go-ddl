@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package taehoio.ddl.services.test.v1;
+
+import "google/protobuf/timestamp.proto";
+import "taehoio/ddl/protobuf/v1/options.proto";
+
+option go_package = "github.com/taehoio/protoc-gen-go-ddl/gen/go/ddl/services/test/v1;testv1";
+
+message User {
+  option (taehoio.ddl.protobuf.v1.datastore_type) = DATASTORE_TYPE_MYSQL;
+
+  uint64 id = 1 [(taehoio.ddl.protobuf.v1.key) = true];
+
+  google.protobuf.Timestamp created_at = 2;
+  google.protobuf.Timestamp updated_at = 3;
+  optional google.protobuf.Timestamp deleted_at = 4;
+
+  string password_hash = 5;
+  optional string full_name = 6;
+  string email = 7 [(taehoio.ddl.protobuf.v1.index) = "name=idx_email"];
+
+  string profile_json = 8 [(taehoio.ddl.protobuf.v1.type) = "name=TEXT"];
+}
+
+enum CountryCode {
+  COUNTRY_CODE_UNSPECIFIED = 0;
+  COUNTRY_CODE_KR = 1;
+  COUNTRY_CODE_CA = 2;
+  COUNTRY_CODE_GB = 3;
+  COUNTRY_CODE_JP = 4;
+}
+
+enum UserIdType {
+  USER_ID_TYPE_UNSPECIFIED = 0;
+  USER_ID_TYPE_KARROT = 1;
+  USER_ID_TYPE_HOIAN = 2;
+}
+
+message UserCheckin {
+  option (taehoio.ddl.protobuf.v1.datastore_type) = DATASTORE_TYPE_MYSQL;
+
+  uint64 id = 1 [(taehoio.ddl.protobuf.v1.key) = true];
+
+  google.protobuf.Timestamp created_at = 2;
+  google.protobuf.Timestamp updated_at = 3;
+  optional google.protobuf.Timestamp deleted_at = 4;
+
+  CountryCode country_code = 5 [(taehoio.ddl.protobuf.v1.index) = "name=ix_countrycodeuseridtypeuseridmeasuredat"];
+  UserIdType user_id_type = 6 [(taehoio.ddl.protobuf.v1.index) = "name=ix_countrycodeuseridtypeuseridmeasuredat"];
+  string user_id = 7 [(taehoio.ddl.protobuf.v1.index) = "name=ix_countrycodeuseridtypeuseridmeasuredat"];
+
+  double latitude = 8;
+  double longitude = 9;
+  optional double altitude = 10;
+  optional double horizontal_accuracy = 11;
+  optional double vertical_accuracy = 12;
+  optional google.protobuf.Timestamp measured_at = 13 [(taehoio.ddl.protobuf.v1.index) = "name=ix_countrycodeuseridtypeuseridmeasuredat"];
+}

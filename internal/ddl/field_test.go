@@ -1,7 +1,8 @@
 package ddl
 
 import (
-	"io/ioutil"
+	"errors"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,7 +14,7 @@ import (
 
 func gen() (*protogen.Plugin, error) {
 	// https://medium.com/@tim.r.coulson/writing-a-protoc-plugin-with-google-golang-org-protobuf-cd5aa75f5777
-	b, err := ioutil.ReadFile("../../testdata/protoc_stdin.dat")
+	b, err := os.ReadFile("../../testdata/marshaled_input.dat")
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +33,13 @@ func userFile() (*protogen.File, error) {
 		return nil, err
 	}
 
-	return gen.Files[3], nil
+	for _, file := range gen.Files {
+		if file.GoPackageName == "testv1" {
+			return file, nil
+		}
+	}
+
+	return nil, errors.New("user file not found")
 }
 
 func userMessage() (*protogen.Message, error) {
@@ -41,9 +48,22 @@ func userMessage() (*protogen.Message, error) {
 		return nil, err
 	}
 
-	userMessage := userFile.Messages[0]
+	for _, msg := range userFile.Messages {
+		if msg.GoIdent.GoName == "User" {
+			return msg, nil
+		}
+	}
 
-	return userMessage, nil
+	return nil, errors.New("user message not found")
+}
+
+func userCheckinMessage() (*protogen.Message, error) {
+	file, err := userFile()
+	if err != nil {
+		return nil, err
+	}
+
+	return file.Messages[1], nil
 }
 
 func TestKindToSQLType(t *testing.T) {
@@ -56,13 +76,17 @@ func TestKindToSQLType(t *testing.T) {
 	}
 
 	tests := []test{
-		{protoreflect.Uint64Kind, "BIGINT UNSIGNED"},
+		{protoreflect.Int64Kind, "BIGINT NOT NULL"},
+		{protoreflect.MessageKind, "TIMESTAMP(6) NOT NULL"},
+		{protoreflect.MessageKind, "TIMESTAMP(6) NOT NULL"},
 		{protoreflect.MessageKind, "TIMESTAMP(6) NULL DEFAULT NULL"},
-		{protoreflect.MessageKind, "TIMESTAMP(6) NULL DEFAULT NULL"},
-		{protoreflect.MessageKind, "TIMESTAMP(6) NULL DEFAULT NULL"},
-		{protoreflect.StringKind, "VARCHAR(255)"},
-		{protoreflect.StringKind, "VARCHAR(255)"},
-		{protoreflect.StringKind, "VARCHAR(255)"},
+		{protoreflect.StringKind, "VARCHAR(255) NOT NULL"},
+		{protoreflect.StringKind, "VARCHAR(100) NULL DEFAULT NULL"},
+		{protoreflect.StringKind, "VARCHAR(255) NOT NULL"},
+		{protoreflect.StringKind, "TEXT NOT NULL"},
+		{protoreflect.MessageKind, "DATE NOT NULL"},
+		{protoreflect.MessageKind, "DATE NULL DEFAULT NULL"},
+		{protoreflect.StringKind, "VARCHAR(255) NOT NULL"},
 	}
 
 	for i, pbField := range u.Fields {
@@ -83,14 +107,23 @@ func TestListFieldOptions(t *testing.T) {
 	idField := *u.Fields[0]
 	assert.NoError(t, err)
 	idOpts := listFieldOptions(idField)
-	assert.Len(t, idOpts, 1)
+	assert.Len(t, idOpts, 2)
 	assert.Equal(t, FieldOption{Name: "taehoio.ddl.protobuf.v1.key", Value: "true"}, idOpts[0])
+	assert.Equal(t, FieldOption{Name: "taehoio.ddl.protobuf.v1.type", Value: ""}, idOpts[1])
 
 	emailField := *u.Fields[6]
 	assert.NoError(t, err)
 	emailOpts := listFieldOptions(emailField)
-	assert.Len(t, emailOpts, 2)
+	assert.Len(t, emailOpts, 3)
+	assert.Equal(t, FieldOption{Name: "taehoio.ddl.protobuf.v1.key", Value: "false"}, emailOpts[0])
 	assert.Equal(t, FieldOption{Name: "taehoio.ddl.protobuf.v1.index", Value: "name=idx_email"}, emailOpts[1])
+	assert.Equal(t, FieldOption{Name: "taehoio.ddl.protobuf.v1.type", Value: ""}, emailOpts[2])
+
+	profileJSONField := *u.Fields[7]
+	assert.NoError(t, err)
+	profileJSONOpts := listFieldOptions(profileJSONField)
+	assert.Len(t, profileJSONOpts, 2)
+	assert.Equal(t, FieldOption{Name: "taehoio.ddl.protobuf.v1.type", Value: "name=TEXT"}, profileJSONOpts[1])
 }
 
 func TestToSQL(t *testing.T) {
@@ -99,5 +132,23 @@ func TestToSQL(t *testing.T) {
 
 	idField, err := NewField(*u.Fields[0])
 	assert.NoError(t, err)
-	assert.Equal(t, "`id` BIGINT UNSIGNED", idField.ToDDLSQL())
+	assert.Equal(t, "`id` BIGINT NOT NULL", idField.ToDDLSQL())
+}
+
+func TestNewField(t *testing.T) {
+	t.Run("with user_checkin message", func(t *testing.T) {
+		userCheckin, err := userCheckinMessage()
+		assert.NoError(t, err)
+
+		t.Run("country_code field type is CountryCode", func(t *testing.T) {
+			countryCodeField := userCheckin.Fields[4]
+			assert.NotNil(t, countryCodeField)
+
+			f, err := NewField(*countryCodeField)
+			assert.NoError(t, err)
+
+			assert.Equal(t, f.PbType, "CountryCode")
+			assert.Equal(t, f.GoType, "CountryCode")
+		})
+	})
 }
