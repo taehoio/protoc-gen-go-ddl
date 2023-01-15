@@ -26,6 +26,7 @@ jobs:
 
       - name: Lint
         run: |
+          export PATH=$PATH:$(go env GOPATH)/bin
           task lint
 
   test-unit-tests:

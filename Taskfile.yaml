@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 
 vars:
   APP: protoc-gen-go-ddl
@@ -20,7 +20,7 @@ tasks:
       - Brewfile
     preconditions:
       - sh: commend -v brew
-        msg: 'Please install Homebrew: https://brew.sh/'
+        msg: "Please install Homebrew: https://brew.sh/"
 
   install:deps:
     desc: Installs dependencies
@@ -138,6 +138,7 @@ tasks:
     desc: Generates files
     cmds:
       - task: generate:proto
+      - task: generate:testdata
       - task: generate:mocks
 
   generate:proto:
@@ -146,6 +147,22 @@ tasks:
       - install:tools
     cmds:
       - buf generate protos
+
+  install:protoc-gen-marshal-input:
+    desc: Installs protoc-gen-marshal-input
+    deps:
+      - install:tools
+    cmds:
+      - rm -f ${GOPATH}/bin/protoc-gen-marshal-input
+      - cd cmd/protoc-gen-marshal-input ; go install ; cd -
+
+  generate:testdata:
+    desc: Generates testdata
+    deps:
+      - install:protoc-gen-marshal-input
+    cmds:
+      - rm -f testdata/marshaled_input.dat
+      - cd testdata ; buf generate protos --exclude-path "protos/google"; cd -
 
   generate:mocks:
     desc: Generates go mocks
