@@ -6,6 +6,7 @@ require (
 	github.com/bufbuild/buf v1.10.0
 	github.com/golang/mock v1.6.0
 	github.com/iancoleman/strcase v0.2.0
+	github.com/incu6us/goimports-reviser/v3 v3.3.0
 	github.com/rakyll/gotest v0.0.6
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/tools v0.4.0
@@ -45,6 +46,7 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.12 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
+	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/moby/buildkit v0.10.5 // indirect
 	github.com/moby/term v0.0.0-20220808134915-39b0c02b01ae // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
@@ -67,6 +69,7 @@ require (
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
 	go.uber.org/zap v1.23.0 // indirect
+	golang.org/x/exp v0.0.0-20221031165847-c99f073a8326 // indirect
 	golang.org/x/mod v0.7.0 // indirect
 	golang.org/x/net v0.3.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20221014153046-6fdb5e3db783 // indirect
