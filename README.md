@@ -52,13 +52,10 @@ Currently, only `MySQL` is supported. We have a plan to support other datastores
 ```protobuf
 enum DatastoreType {
   DATASTORE_TYPE_UNSPECIFIED = 0;
-  DATASTORE_TYPE_SQLITE = 1;
-  DATASTORE_TYPE_MYSQL = 2;
-  DATASTORE_TYPE_POSTGRESQL = 3;
-  DATASTORE_TYPE_MSSQL = 4;
-  DATASTORE_TYPE_ORACLE = 5;
-  DATASTORE_TYPE_BIGQUERY = 6;
-  DATASTORE_TYPE_MONGODB = 7;
+  DATASTORE_TYPE_MYSQL = 1;
+  DATASTORE_TYPE_POSTGRESQL = 2;
+  DATASTORE_TYPE_MONGODB = 3;
+  DATASTORE_TYPE_FIRESTORE = 4;
 }
 ```
 
@@ -250,7 +247,8 @@ The entire codes are located in [testdata](/testdata) directory
 ## TODOs
 
 - [x] protobuf optional field support
-- [ ] MongoDB support
+- [x] MongoDB support
+- [ ] Firestore support
 - [ ] DynamoDB support
 
 ## Contributing

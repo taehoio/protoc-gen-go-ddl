@@ -8,13 +8,10 @@ option go_package = "github.com/taehoio/protoc-gen-go-ddl/gen/go/taehoio/ddl/pro
 
 enum DatastoreType {
   DATASTORE_TYPE_UNSPECIFIED = 0;
-  DATASTORE_TYPE_SQLITE = 1;
-  DATASTORE_TYPE_MYSQL = 2;
-  DATASTORE_TYPE_POSTGRESQL = 3;
-  DATASTORE_TYPE_MSSQL = 4;
-  DATASTORE_TYPE_ORACLE = 5;
-  DATASTORE_TYPE_BIGQUERY = 6;
-  DATASTORE_TYPE_MONGODB = 7;
+  DATASTORE_TYPE_MYSQL = 1;
+  DATASTORE_TYPE_POSTGRESQL = 2;
+  DATASTORE_TYPE_MONGODB = 3;
+  DATASTORE_TYPE_FIRESTORE = 4;
 }
 
 extend google.protobuf.MessageOptions {
