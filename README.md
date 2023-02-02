@@ -120,15 +120,6 @@ message User {
 enum CountryCode {
   COUNTRY_CODE_UNSPECIFIED = 0;
   COUNTRY_CODE_KR = 1;
-  COUNTRY_CODE_CA = 2;
-  COUNTRY_CODE_GB = 3;
-  COUNTRY_CODE_JP = 4;
-}
-
-enum UserIdType {
-  USER_ID_TYPE_UNSPECIFIED = 0;
-  USER_ID_TYPE_KARROT = 1;
-  USER_ID_TYPE_HOIAN = 2;
 }
 
 message UserCheckin {
@@ -140,16 +131,15 @@ message UserCheckin {
   google.protobuf.Timestamp updated_at = 3;
   google.protobuf.Timestamp deleted_at = 4;
 
-  CountryCode country_code = 5 [(taehoio.ddl.protobuf.v1.index) = "name=ix_countrycode_useridtype_userid_measuredat"];
-  UserIdType user_id_type = 6 [(taehoio.ddl.protobuf.v1.index) = "name=ix_countrycode_useridtype_userid_measuredat"];
-  string user_id = 7 [(taehoio.ddl.protobuf.v1.index) = "name=ix_countrycode_useridtype_userid_measuredat"];
+  CountryCode country_code = 5 [(taehoio.ddl.protobuf.v1.index) = "name=idx_countrycode_userid_measuredat"];
+  string user_id = 7 [(taehoio.ddl.protobuf.v1.index) = "name=idx_countrycode_userid_measuredat"];
 
   double latitude = 8;
   double longitude = 9;
-  google.protobuf.DoubleValue altitude = 10;
-  google.protobuf.DoubleValue horizontal_accuracy = 11;
-  google.protobuf.DoubleValue vertical_accuracy = 12;
-  google.protobuf.Timestamp measured_at = 13 [(taehoio.ddl.protobuf.v1.index) = "name=ix_countrycode_useridtype_userid_measuredat"];
+  optional double altitude = 10;
+  optional double horizontal_accuracy = 11;
+  optional double vertical_accuracy = 12;
+  google.protobuf.Timestamp measured_at = 13 [(taehoio.ddl.protobuf.v1.index) = "name=ix_countrycode_userid_measuredat"];
 }
 ```
 
@@ -177,7 +167,6 @@ CREATE TABLE `user_checkin` (
   `updated_at` TIMESTAMP(6) NULL DEFAULT NULL,
   `deleted_at` TIMESTAMP(6) NULL DEFAULT NULL,
   `country_code` INT NOT NULL,
-  `user_id_type` INT NOT NULL,
   `user_id` VARCHAR(255) NOT NULL,
   `latitude` DOUBLE NOT NULL,
   `longitude` DOUBLE NOT NULL,
@@ -188,7 +177,7 @@ CREATE TABLE `user_checkin` (
   PRIMARY KEY (`id`)
 );
 
-CREATE INDEX `ix_countrycode_useridtype_userid_measuredat` ON `user_checkin` (`country_code`, `user_id_type`, `user_id`, `measured_at`);
+CREATE INDEX `ix_countrycode_userid_measuredat` ON `user_checkin` (`country_code`, `user_id`, `measured_at`);
 ```
 
 ### Golang codes
@@ -228,9 +217,9 @@ type UserCheckinRecorder interface {
 	SaveTx(ctx context.Context, tx *sql.Tx, message *UserCheckin) error
 	Delete(ctx context.Context, db *sql.DB, id int64) error
 	DeleteTx(ctx context.Context, tx *sql.Tx, id int64) error
-	FindOneByCountryCodeAndUserIdTypeAndUserIdAndMeasuredAt(ctx context.Context, db *sql.DB, countryCode interface{}, userIdType interface{}, userId interface{}, measuredAtStartTime interface{}, measuredAtEndTime interface{}) (*UserCheckin, error)
-	FindByCountryCodeAndUserIdTypeAndUserIdAndMeasuredAt(ctx context.Context, db *sql.DB, countryCode interface{}, userIdType interface{}, userId interface{}, measuredAtStartTime interface{}, measuredAtEndTime interface{}, paginationOpts ...PaginationOption) ([]*UserCheckin, error)
-	DeleteByCountryCodeAndUserIdTypeAndUserIdAndMeasuredAt(ctx context.Context, db *sql.DB, countryCode interface{}, userIdType interface{}, userId interface{}, measuredAtStartTime interface{}, measuredAtEndTime interface{}) error
+	FindOneByCountryCodeAndUserIdAndMeasuredAt(ctx context.Context, db *sql.DB, countryCode interface{}, userId interface{}, measuredAtStartTime interface{}, measuredAtEndTime interface{}) (*UserCheckin, error)
+	FindByCountryCodeAndUserIdAndMeasuredAt(ctx context.Context, db *sql.DB, countryCode interface{}, userId interface{}, measuredAtStartTime interface{}, measuredAtEndTime interface{}, paginationOpts ...PaginationOption) ([]*UserCheckin, error)
+	DeleteByCountryCodeAndUserIdAndMeasuredAt(ctx context.Context, db *sql.DB, countryCode interface{}, userId interface{}, measuredAtStartTime interface{}, measuredAtEndTime interface{}) error
 }
 
 ```
